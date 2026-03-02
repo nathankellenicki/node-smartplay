@@ -19,20 +19,42 @@ export const SERVICE_CHANGED_CHAR_UUID = "00002a05-0000-1000-8000-00805f9b34fb";
 export const LEGO_COMPANY_IDENTIFIER = 0x0397;
 
 export enum Register {
-  IdleBeacon = 0x02,
-  DeviceConfig = 0x08,
-  Battery = 0x20,
-  FirmwareVersion = 0x22,
-  DeviceName = 0x80,
-  Volume = 0x81,
-  MacAddress = 0x84,
-  ReadyFlag = 0x85,
-  AuthNonce = 0x86,
-  AuthResponse = 0x87,
-  CryptoData = 0x88,
-  Keepalive = 0x90,
-  SetupCommand = 0x91,
-  ConnectionState = 0x93,
+  // BLE connection properties (0x01-0x0A)
+  ConnectionParameterUpdateReq = 0x01,
+  CurrentConnectionParameters = 0x02,
+  DisconnectReq = 0x03,
+  ConnectionSecurityLevel = 0x04,
+  SecurityReq = 0x05,
+  ServiceChanged = 0x06,
+  DeleteBonds = 0x07,
+  CurrentAttMtu = 0x08,
+  PhyUpdateReq = 0x09,
+  CurrentPhy = 0x0a,
+
+  // Device info (0x20-0x26)
+  BatteryLevel = 0x20,
+  DeviceModel = 0x21,
+  FirmwareRevision = 0x22,
+  EnterDiagnosticMode = 0x23,
+  DiagnosticModeComplete = 0x24,
+  DisconnectAndReset = 0x25,
+  DisconnectConfigureFotaAndReset = 0x26,
+
+  // Hub properties (0x80-0x96)
+  HubLocalName = 0x80,
+  UserVolume = 0x81,
+  CurrentWriteOffset = 0x82,
+  PrimaryMacAddress = 0x84,
+  UpgradeState = 0x85,
+  SignedCommandNonce = 0x86,
+  SignedCommand = 0x87,
+  UpdateState = 0x88,
+  PipelineStage = 0x89,
+  UXSignal = 0x90,
+  OwnershipProof = 0x91,
+  ChargingState = 0x93,
+  FactoryReset = 0x95,
+  TravelMode = 0x96,
 }
 
 export enum CommandType {
@@ -47,11 +69,10 @@ export enum VolumeLevel {
   Low = 10,
 }
 
-export enum ConnectionState {
-  Initial = 0x01,
-  Connected = 0x61,
-  SetupComplete = 0xa0,
-  Active = 0xa1,
+export enum UpgradeStateValue {
+  Ready = 0,
+  InProgress = 1,
+  LowBattery = 2,
 }
 
 export const KEEPALIVE_DATA = [0xea, 0x00];

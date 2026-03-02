@@ -36,19 +36,22 @@ export function getRegisterKey(register: number): string {
   return `reg:${register.toString(16).padStart(2, "0")}`;
 }
 
-export function parseFirmwareVersion(data: Buffer): string {
+export function parseDeviceModel(data: Buffer): string {
   const end = data.indexOf(0);
-  const str = data.subarray(0, end === -1 ? undefined : end).toString("utf8");
-  return str;
+  return data.subarray(0, end === -1 ? undefined : end).toString("utf8");
 }
 
-export function parseDeviceName(data: Buffer): string {
+export function parseFirmwareRevision(data: Buffer): string {
   const end = data.indexOf(0);
-  const str = data.subarray(0, end === -1 ? undefined : end).toString("utf8");
-  return str;
+  return data.subarray(0, end === -1 ? undefined : end).toString("utf8");
 }
 
-export function parseMacAddress(data: Buffer): string {
+export function parseHubLocalName(data: Buffer): string {
+  const end = data.indexOf(0);
+  return data.subarray(0, end === -1 ? undefined : end).toString("utf8");
+}
+
+export function parsePrimaryMacAddress(data: Buffer): string {
   return Array.from(data.subarray(0, 6))
     .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
     .join(":");
@@ -58,14 +61,14 @@ export function parseBatteryLevel(data: Buffer): number {
   return data[0] ?? 0;
 }
 
-export function parseVolumeLevel(data: Buffer): number {
+export function parseUserVolume(data: Buffer): number {
   return data[0] ?? 0;
 }
 
-export function parseConnectionState(data: Buffer): number {
+export function parseChargingState(data: Buffer): number {
   return data[0] ?? 0;
 }
 
-export function parseReadyFlag(data: Buffer): boolean {
-  return (data[0] ?? 0) === 0;
+export function parseUpgradeState(data: Buffer): number {
+  return data[0] ?? 0;
 }

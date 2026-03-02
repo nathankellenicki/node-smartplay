@@ -8,19 +8,21 @@ import {
   POLL_INTERVAL_MS,
 } from "../constants";
 import {
-  parseFirmwareVersion,
-  parseDeviceName,
-  parseMacAddress,
+  parseDeviceModel,
+  parseFirmwareRevision,
+  parseHubLocalName,
+  parsePrimaryMacAddress,
   parseBatteryLevel,
-  parseVolumeLevel,
-  parseConnectionState,
-  parseReadyFlag,
+  parseUserVolume,
+  parseChargingState,
+  parseUpgradeState,
 } from "../protocol";
 
 const log = createDebug("node-smartplay:device");
 
 export interface SmartBrickInfo {
   name: string;
+  model: string;
   firmware: string;
   mac: string;
   uuid: string;
@@ -34,7 +36,7 @@ export class SmartBrickDevice extends EventEmitter {
   private _battery = 0;
   private _volume = 0;
   private _connectionState = 0;
-  private _info: SmartBrickInfo = { name: "", firmware: "", mac: "", uuid: "" };
+  private _info: SmartBrickInfo = { name: "", model: "", firmware: "", mac: "", uuid: "" };
 
   constructor(
     private readonly connection: SmartBrickConnection,
@@ -77,31 +79,35 @@ export class SmartBrickDevice extends EventEmitter {
       // Phase 2: Handshake — read device identity registers
       log("starting handshake");
 
-      const fwResponse = await this.connection.readRegister(Register.FirmwareVersion);
-      this._info.firmware = parseFirmwareVersion(fwResponse.data);
+      const modelResponse = await this.connection.readRegister(Register.DeviceModel);
+      this._info.model = parseDeviceModel(modelResponse.data);
+      log("model: %s", this._info.model);
+
+      const fwResponse = await this.connection.readRegister(Register.FirmwareRevision);
+      this._info.firmware = parseFirmwareRevision(fwResponse.data);
       log("firmware: %s", this._info.firmware);
 
-      const volResponse = await this.connection.readRegister(Register.Volume);
-      this._volume = parseVolumeLevel(volResponse.data);
+      const volResponse = await this.connection.readRegister(Register.UserVolume);
+      this._volume = parseUserVolume(volResponse.data);
       log("volume: %d", this._volume);
 
-      const macResponse = await this.connection.readRegister(Register.MacAddress);
-      this._info.mac = parseMacAddress(macResponse.data);
+      const macResponse = await this.connection.readRegister(Register.PrimaryMacAddress);
+      this._info.mac = parsePrimaryMacAddress(macResponse.data);
       log("mac: %s", this._info.mac);
 
-      const nameResponse = await this.connection.readRegister(Register.DeviceName);
-      this._info.name = parseDeviceName(nameResponse.data);
+      const nameResponse = await this.connection.readRegister(Register.HubLocalName);
+      this._info.name = parseHubLocalName(nameResponse.data);
       log("name: %s", this._info.name);
 
-      const batteryResponse = await this.connection.readRegister(Register.Battery);
+      const batteryResponse = await this.connection.readRegister(Register.BatteryLevel);
       this._battery = parseBatteryLevel(batteryResponse.data);
       log("battery: %d%%", this._battery);
 
       // Phase 3: Setup — keepalive + config
       log("sending setup commands");
-      await this.connection.writeRegister(Register.Keepalive, KEEPALIVE_DATA, false);
+      await this.connection.writeRegister(Register.UXSignal, KEEPALIVE_DATA, false);
 
-      const configResponse = await this.connection.readRegister(Register.DeviceConfig);
+      const configResponse = await this.connection.readRegister(Register.CurrentAttMtu);
       log("device config: %s", Array.from(configResponse.data).map((b) => b.toString(16).padStart(2, "0")).join(""));
 
       // Auth skipped — ECDSA P-256 signing requires LEGO's backend server.
@@ -128,8 +134,13 @@ export class SmartBrickDevice extends EventEmitter {
     this.emit("disconnect");
   }
 
+  async readRawRegister(register: Register): Promise<Buffer> {
+    const response = await this.connection.readRegister(register);
+    return response.data;
+  }
+
   async readBattery(): Promise<number> {
-    const response = await this.connection.readRegister(Register.Battery);
+    const response = await this.connection.readRegister(Register.BatteryLevel);
     const level = parseBatteryLevel(response.data);
     if (level !== this._battery) {
       this._battery = level;
@@ -139,8 +150,8 @@ export class SmartBrickDevice extends EventEmitter {
   }
 
   async readVolume(): Promise<number> {
-    const response = await this.connection.readRegister(Register.Volume);
-    const level = parseVolumeLevel(response.data);
+    const response = await this.connection.readRegister(Register.UserVolume);
+    const level = parseUserVolume(response.data);
     if (level !== this._volume) {
       this._volume = level;
       this.emit("volume", level);
@@ -149,19 +160,19 @@ export class SmartBrickDevice extends EventEmitter {
   }
 
   async setVolume(level: VolumeLevel): Promise<void> {
-    // Check ready flag before writing volume
-    const readyResponse = await this.connection.readRegister(Register.ReadyFlag);
-    const ready = parseReadyFlag(readyResponse.data);
-    if (!ready) {
-      throw new Error("Device is busy, cannot set volume");
+    // Check upgrade state before writing volume (0 = Ready)
+    const upgradeResponse = await this.connection.readRegister(Register.UpgradeState);
+    const upgradeState = parseUpgradeState(upgradeResponse.data);
+    if (upgradeState !== 0) {
+      throw new Error("Device is busy (upgrade in progress), cannot set volume");
     }
 
     // Write new volume
-    await this.connection.writeRegister(Register.Volume, [level], true);
+    await this.connection.writeRegister(Register.UserVolume, [level], true);
 
     // Verify
-    const verifyResponse = await this.connection.readRegister(Register.Volume);
-    const newLevel = parseVolumeLevel(verifyResponse.data);
+    const verifyResponse = await this.connection.readRegister(Register.UserVolume);
+    const newLevel = parseUserVolume(verifyResponse.data);
     if (newLevel !== this._volume) {
       this._volume = newLevel;
       this.emit("volume", newLevel);
@@ -179,6 +190,19 @@ export class SmartBrickDevice extends EventEmitter {
 
   async setVolumeLow(): Promise<void> {
     return this.setVolume(VolumeLevel.Low);
+  }
+
+  async setName(name: string): Promise<void> {
+    const payload = Buffer.from(name, "utf8");
+    if (payload.length > 12) {
+      throw new Error(`Name too long (${payload.length} bytes, max 12)`);
+    }
+    await this.connection.writeRegister(Register.HubLocalName, payload, false);
+
+    // Read back to confirm
+    const response = await this.connection.readRegister(Register.HubLocalName);
+    this._info.name = parseHubLocalName(response.data);
+    log("name set to %s", this._info.name);
   }
 
   private startPolling(): void {
@@ -202,8 +226,8 @@ export class SmartBrickDevice extends EventEmitter {
   private async poll(): Promise<void> {
     try {
       // Read connection state
-      const stateResponse = await this.connection.readRegister(Register.ConnectionState);
-      const state = parseConnectionState(stateResponse.data);
+      const stateResponse = await this.connection.readRegister(Register.ChargingState);
+      const state = parseChargingState(stateResponse.data);
       if (state !== this._connectionState) {
         this._connectionState = state;
         this.emit("connectionState", state);
@@ -211,10 +235,10 @@ export class SmartBrickDevice extends EventEmitter {
       }
 
       // Send keepalive
-      await this.connection.writeRegister(Register.Keepalive, KEEPALIVE_DATA, false);
+      await this.connection.writeRegister(Register.UXSignal, KEEPALIVE_DATA, false);
 
       // Read battery
-      const batteryResponse = await this.connection.readRegister(Register.Battery);
+      const batteryResponse = await this.connection.readRegister(Register.BatteryLevel);
       const battery = parseBatteryLevel(batteryResponse.data);
       if (battery !== this._battery) {
         this._battery = battery;
