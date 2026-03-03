@@ -7,6 +7,7 @@ import { createDebug } from "./logger";
 
 const log = createDebug("node-smartplay:scanner");
 
+/** @internal */
 type NobleAdapter = {
   state: string;
   on(event: "discover", listener: (peripheral: Peripheral) => void): void;
@@ -16,6 +17,10 @@ type NobleAdapter = {
   stopScanning(): void;
 };
 
+/**
+ * Main entry point for discovering and managing LEGO Smart Play BLE devices.
+ * Create an instance and call {@link scan} to begin discovering nearby devices.
+ */
 export class SmartPlay extends EventEmitter {
   private scanning = false;
   private readonly discovered = new Set<string>();
@@ -25,11 +30,16 @@ export class SmartPlay extends EventEmitter {
   };
   private adapter: NobleAdapter | undefined;
 
+  /** @internal */
   constructor(adapter?: NobleAdapter) {
     super();
     this.adapter = adapter;
   }
 
+  /**
+   * Begin scanning for Smart Play devices over BLE.
+   * Emits a "discover" event for each new device found.
+   */
   async scan(): Promise<void> {
     if (this.scanning) {
       return;
@@ -48,6 +58,9 @@ export class SmartPlay extends EventEmitter {
     }
   }
 
+  /**
+   * Stop scanning and clear the discovered device inventory.
+   */
   stop(): void {
     if (!this.scanning) {
       return;
@@ -65,10 +78,16 @@ export class SmartPlay extends EventEmitter {
     }
   }
 
+  /**
+   * Get a discovered device by its UUID.
+   */
   getDevice(uuid: string): SmartBrickDevice | undefined {
     return this.devices.get(uuid);
   }
 
+  /**
+   * Get all discovered devices.
+   */
   getDevices(): SmartBrickDevice[] {
     return Array.from(this.devices.values());
   }
@@ -86,7 +105,7 @@ export class SmartPlay extends EventEmitter {
       return;
     }
 
-    log("discovered Smart Brick: %s (%s)", peripheral.advertisement?.localName ?? "unknown", peripheral.id);
+    log("discovered device: %s (%s)", peripheral.advertisement?.localName ?? "unknown", peripheral.id);
 
     const connection = new SmartBrickConnection(peripheral);
     const device = new SmartBrickDevice(connection, peripheral.uuid);

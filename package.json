@@ -1,13 +1,14 @@
 {
   "name": "node-smartplay",
   "version": "1.0.0",
-  "description": "A JavaScript/TypeScript module for LEGO Smart Play (\"Smart Brick\") BLE devices",
+  "description": "A JavaScript/TypeScript module for LEGO Smart Play BLE devices",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",
+    "docs": "typedoc",
     "prepare": "npm run build"
   },
   "keywords": [
@@ -29,6 +30,7 @@
     "@types/debug": "^4.1.12",
     "@types/node": "^22.15.0",
     "rimraf": "^6.1.2",
+    "typedoc": "^0.28.17",
     "typescript": "^5.9.3"
   }
 }

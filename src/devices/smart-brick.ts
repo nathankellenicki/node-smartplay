@@ -20,6 +20,7 @@ import {
 
 const log = createDebug("node-smartplay:device");
 
+/** Device identity information populated during connection. */
 export interface SmartBrickInfo {
   name: string;
   model: string;
@@ -28,6 +29,13 @@ export interface SmartBrickInfo {
   uuid: string;
 }
 
+/**
+ * Represents a LEGO Smart Brick device.
+ * Provides methods for connecting, reading device info, and controlling volume.
+ *
+ * After calling {@link connect}, the device enters a polling loop that
+ * emits "battery" and "connectionState" events on state changes.
+ */
 export class SmartBrickDevice extends EventEmitter {
   private readonly handleConnectionDisconnectBound = () => this.handleConnectionDisconnect();
   private isConnected = false;
@@ -38,6 +46,7 @@ export class SmartBrickDevice extends EventEmitter {
   private _connectionState = 0;
   private _info: SmartBrickInfo = { name: "", model: "", firmware: "", mac: "", uuid: "" };
 
+  /** @internal */
   constructor(
     private readonly connection: SmartBrickConnection,
     uuid: string,
@@ -46,26 +55,35 @@ export class SmartBrickDevice extends EventEmitter {
     this._info.uuid = uuid;
   }
 
+  /** Current battery level (0–100%). */
   get battery(): number {
     return this._battery;
   }
 
+  /** Current volume level. */
   get volume(): number {
     return this._volume;
   }
 
+  /** Whether the device is currently connected. */
   get connected(): boolean {
     return this.isConnected;
   }
 
+  /** Whether the device has been authenticated. */
   get authenticated(): boolean {
     return this.isAuthenticated;
   }
 
+  /** Device identity (name, model, firmware, MAC, UUID). */
   get info(): SmartBrickInfo {
     return { ...this._info };
   }
 
+  /**
+   * Connect to the device and perform the handshake sequence.
+   * Reads device identity, sends keepalive, and starts the polling loop.
+   */
   async connect(): Promise<void> {
     if (this.isConnected) {
       return;
@@ -125,6 +143,7 @@ export class SmartBrickDevice extends EventEmitter {
     }
   }
 
+  /** Disconnect from the device and stop the polling loop. */
   disconnect(): void {
     this.stopPolling();
     this.connection.off("disconnect", this.handleConnectionDisconnectBound);
@@ -134,11 +153,29 @@ export class SmartBrickDevice extends EventEmitter {
     this.emit("disconnect");
   }
 
+  /** Read a raw register value. Useful for exploring undocumented registers. */
   async readRawRegister(register: Register): Promise<Buffer> {
     const response = await this.connection.readRegister(register);
     return response.data;
   }
 
+  /** Read the device model name. */
+  async readModel(): Promise<string> {
+    const response = await this.connection.readRegister(Register.DeviceModel);
+    const model = parseDeviceModel(response.data);
+    this._info.model = model;
+    return model;
+  }
+
+  /** Read the firmware version string. */
+  async readFirmwareRevision(): Promise<string> {
+    const response = await this.connection.readRegister(Register.FirmwareRevision);
+    const firmware = parseFirmwareRevision(response.data);
+    this._info.firmware = firmware;
+    return firmware;
+  }
+
+  /** Read the current battery level. Emits "battery" if the value has changed. */
   async readBattery(): Promise<number> {
     const response = await this.connection.readRegister(Register.BatteryLevel);
     const level = parseBatteryLevel(response.data);
@@ -149,6 +186,7 @@ export class SmartBrickDevice extends EventEmitter {
     return level;
   }
 
+  /** Read the current volume level. Emits "volume" if the value has changed. */
   async readVolume(): Promise<number> {
     const response = await this.connection.readRegister(Register.UserVolume);
     const level = parseUserVolume(response.data);
@@ -159,6 +197,7 @@ export class SmartBrickDevice extends EventEmitter {
     return level;
   }
 
+  /** Set the volume to a {@link VolumeLevel} value. */
   async setVolume(level: VolumeLevel): Promise<void> {
     // Check upgrade state before writing volume (0 = Ready)
     const upgradeResponse = await this.connection.readRegister(Register.UpgradeState);
@@ -180,18 +219,22 @@ export class SmartBrickDevice extends EventEmitter {
     log("volume set to %d", newLevel);
   }
 
+  /** Set the volume to high (100). */
   async setVolumeHigh(): Promise<void> {
     return this.setVolume(VolumeLevel.High);
   }
 
+  /** Set the volume to medium (40). */
   async setVolumeMedium(): Promise<void> {
     return this.setVolume(VolumeLevel.Medium);
   }
 
+  /** Set the volume to low (10). */
   async setVolumeLow(): Promise<void> {
     return this.setVolume(VolumeLevel.Low);
   }
 
+  /** Set the device name (max 12 bytes UTF-8). */
   async setName(name: string): Promise<void> {
     const payload = Buffer.from(name, "utf8");
     if (payload.length > 12) {

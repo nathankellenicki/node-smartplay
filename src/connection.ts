@@ -29,6 +29,7 @@ type PendingRequest = {
   timeout: NodeJS.Timeout;
 };
 
+/** @internal */
 export class SmartBrickConnection extends EventEmitter {
   private controlPoint?: Characteristic;
   private readonly pending = new Map<string, PendingRequest[]>();
@@ -57,7 +58,7 @@ export class SmartBrickConnection extends EventEmitter {
     const serviceChanged = findCharacteristic(characteristics, SERVICE_CHANGED_CHAR_UUID);
 
     if (!controlPoint) {
-      throw new Error("Unable to locate Smart Brick Control Point characteristic");
+      throw new Error("Unable to locate Control Point characteristic");
     }
 
     // Subscribe CCCDs in the order observed in the Android HCI capture

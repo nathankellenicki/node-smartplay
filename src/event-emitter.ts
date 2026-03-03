@@ -1,10 +1,12 @@
-type Listener = (...args: any[]) => void;
+/** @internal */
+export type Listener = (...args: any[]) => void;
 
 type ListenerEntry = {
   listener: Listener;
   once: boolean;
 };
 
+/** @internal */
 export class EventEmitter {
   private readonly listeners = new Map<string | symbol, ListenerEntry[]>();
 

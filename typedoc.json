@@ -1,0 +1,11 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "node-smartplay",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "intentionallyNotExported": ["Listener"]
+}

@@ -3,7 +3,7 @@ const { SmartPlay } = require("../dist");
 const smartPlay = new SmartPlay();
 
 smartPlay.on("discover", async (device) => {
-    console.log("Found Smart Brick, connecting...");
+    console.log("Found device, connecting...");
 
     try {
         await device.connect();
@@ -22,5 +22,5 @@ smartPlay.on("discover", async (device) => {
     }
 });
 
-console.log("Scanning for Smart Bricks...\n");
+console.log("Scanning for Smart Play devices...\n");
 smartPlay.scan();
