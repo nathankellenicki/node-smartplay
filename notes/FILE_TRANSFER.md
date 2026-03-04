@@ -1,10 +1,10 @@
 # LEGO Smart Play — File Transfer & Data Channels
 
-> **Note:** Data channel protocol was reverse engineered from Android HCI captures and ConnectKit SDK class definitions. The file transfer state machine is inferred from decompiled code — actual wire behaviour may differ. Some details may be wrong.
+> Reverse engineered from HCI captures and ConnectKit SDK class definitions. File transfer state machine is inferred from decompiled code — actual wire behaviour may differ. May contain errors.
 
 ## Overview
 
-The data channels handle bulk file operations — reading telemetry, downloading fault logs, and uploading firmware. The Control Point handles register commands (see [PROTOCOL.md](PROTOCOL.md)).
+Data channels handle bulk file operations — telemetry, fault logs, firmware. Register commands use the Control Point (see [PROTOCOL.md](PROTOCOL.md)).
 
 ## Data Channel Characteristics
 

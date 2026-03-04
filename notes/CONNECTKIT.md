@@ -1,10 +1,10 @@
 # LEGO ConnectKit SDK Overview
 
-> **Note:** All of this was extracted from the SmartAssist APK via Il2CppDumper. It reflects class definitions and metadata, not runtime behaviour. Some details may be incomplete or wrong.
+> Extracted from the SmartAssist APK via Il2CppDumper. Reflects class definitions and metadata, not runtime behaviour. May contain errors.
 
 Extracted from the LEGO SmartAssist APK (`com.lego.smartassist`, codename "Horizon") via Il2CppDumper. ConnectKit version **6.2.0-preview.234**, Unity **6000.1.17f1**.
 
-The ConnectKit is LEGO's internal BLE SDK, shipped as a Unity package (`com.lego.sdk.dpt.connectkit`) inside all their companion apps. It integrates every generation of LEGO connected hardware — WeDo 2.0 (2016) through Smart Brick (2025) — behind a single interface. The SDK identifies hub type from BLE advertisements, selects the right protocol stack, and exposes uniform services. App code calls `GetBatteryLevel()` the same way regardless of whether the hub speaks LWP3, WDX, or P11/RPC underneath.
+LEGO's internal BLE SDK, shipped as a Unity package (`com.lego.sdk.dpt.connectkit`) inside all companion apps. Integrates every generation of connected hardware — WeDo 2.0 (2016) through Smart Brick (2025) — behind a single interface. Identifies hub type from BLE advertisements, selects the right protocol stack, and exposes uniform services. App code calls `GetBatteryLevel()` the same way regardless of whether the hub speaks LWP3, WDX, or P11/RPC.
 
 The Smart Brick (AudioBrick) uses the WDX stack. Full extracted reference in `randomfiles/CONNECT_KIT.md`.
 
@@ -35,20 +35,20 @@ Three different BLE protocols, each reflecting a different hardware generation:
 | Stack | BLE Service | Era | Chipset | Used By |
 | --- | --- | --- | --- | --- |
 | **LWP3** | `00001623-...` | 2016–present | TI CC2640/CC26x2 + Nordic | WeDo, Boost, Powered Up, Technic, SPIKE, DUPLO Train, Mario |
-| **WDX** | `0000fef6-...` | 2024–present | Maxim MAX32 (Arm Cordio) | Smart Brick, PanelCharger |
-| **P11/RPC** | `005F0001-3FF2-...` | 2025–present | MAX32 (Arm Cordio) | Newer P11 platform hubs |
+| **WDX** | `0000fef6-...` | 2024–present | EM Microelectronic EM9305 (ARC, Arm Cordio) | Smart Brick, PanelCharger |
+| **P11/RPC** | `005F0001-3FF2-...` | 2025–present | EM9305 (Arm Cordio) | Newer P11 platform hubs |
 
 ### LWP3 (LEGO Wireless Protocol v3)
 
-The protocol used by the majority of LEGO connected products, and by node-poweredup. Message-framed with `[Length, HubID, MessageType, ...Payload]`. Port-based I/O — peripherals attach to ports and are addressed by port ID. The LEAF variant (Mario/Luigi/Peach) extends LWP3 with a game engine IO type.
+Used by the majority of LEGO connected products, and by node-poweredup. Message-framed: `[Length, HubID, MessageType, ...Payload]`. Port-based I/O — peripherals attach to ports, addressed by port ID. The LEAF variant (Mario/Luigi/Peach) extends LWP3 with game engine IO types.
 
 ### WDX (Wireless Data Exchange)
 
-The Smart Brick's protocol — a departure from LWP3. Based on the Arm Cordio / Packetcraft WDX profile. Register-based property get/set over a control point, plus file transfer channels for firmware, telemetry, and fault logs. No port-based I/O — the device is a single unit with named properties. See [PROTOCOL.md](PROTOCOL.md) and [FILE-TRANSFER.md](FILE-TRANSFER.md).
+The Smart Brick's protocol. Based on the Arm Cordio / Packetcraft WDX profile. Register-based property get/set over a control point, plus file transfer channels for firmware, telemetry, and fault logs. No port-based I/O — single unit with named properties. See [PROTOCOL.md](PROTOCOL.md) and [FILE_TRANSFER.md](FILE_TRANSFER.md).
 
 ### P11/RPC (JAM + MessagePack)
 
-The newest protocol, on the same Cordio-based chips as WDX. Separate Tx/Rx characteristics, MessagePack-serialized RPC calls wrapped in JAM framing with hash-based procedure addressing. Likely the direction for future LEGO connected products.
+Newest protocol, same Cordio-based chips as WDX. Separate Tx/Rx characteristics, MessagePack-serialized RPC calls in JAM framing with hash-based procedure addressing. Likely the direction for future products.
 
 ## WDX Services (AudioBrick)
 
@@ -70,14 +70,17 @@ Four high-level services for the Smart Brick:
 
 ## IO Types (48 total)
 
-48 peripheral types defined across all hub families. Most are LWP3-only. Relevant to Smart Play:
+48 peripheral types defined across all hub families. Most are LWP3-only.
+
+The Smart Brick uses WDX registers, not LWP3 port-based IO, so these IO types are likely all LWP3/LEAF. Listed for reference:
 
 | ID | Name | Notes |
 | --- | --- | --- |
 | 0x2A (42) | SoundPlayer | Sound playback |
-| 0x59 (89) | PlayVM | Play Virtual Machine |
-| 0x5A (90) | JourneyGameEngine | Journey game engine with motor/light/sound control |
-| 0xFF (255) | JourneyColorSensor | Journey color sensor |
+| 0x49 (73) | LEAFTag | LEGO Mario tag reader |
+| 0x59 (89) | PlayVM | Play Virtual Machine — possibly Mario/Journey, not confirmed Smart Brick |
+| 0x5A (90) | JourneyGameEngine | Journey (Mario/Luigi/Peach) game engine |
+| 0xFF (255) | JourneyColorSensor | Journey color sensor (Mode 1 = "Tag") |
 
 ## Signed Commands
 

@@ -1,6 +1,6 @@
 # LEGO Smart Play — Backend API
 
-> **Note:** Backend details come from the SmartAssist APK (Il2CppDumper class dumps, Unity asset configs) and direct probing of the Bilbo API's unauthenticated endpoints. The OpenAPI spec is publicly exposed at `/openapi.json`. Authenticated endpoint behaviour is inferred from class definitions, not direct observation. Some details may be wrong.
+> Sourced from APK decompilation (Il2CppDumper) and direct probing of the Bilbo API. OpenAPI spec is publicly exposed at `/openapi.json`. Authenticated endpoint behaviour is inferred from class definitions, not observed. May contain errors.
 
 ## Overview
 
@@ -31,7 +31,7 @@ Bricks are identified by their MAC address (from register `0x84`) in colon-separ
 
 ## Command Signing
 
-The `/commands/sign` endpoint is how the app obtains ECDSA P-256 signatures for brick authentication. The app sends the nonce (from register `0x86`) and element ID to the backend, and receives the 64-byte signature to write to register `0x87`. See [PROTOCOL.md](PROTOCOL.md) for the BLE-side authentication flow.
+The app obtains ECDSA P-256 signatures via `/commands/sign` — sends the nonce (from register `0x86`) and element ID, gets back the 64-byte signature to write to register `0x87`. See [PROTOCOL.md](PROTOCOL.md) for the BLE-side flow.
 
 **The ECDSA private key is held exclusively on LEGO's servers.** It is not in the APK, the firmware images, or the BLE traffic. Decompilation of the app's `CommandSigner` class confirms it's just an HTTP client — no key material. It posts to `/commands/sign` with an OAuth header and returns the signature bytes. Analysis of 6 captured signatures confirmed proper random `k` values (all `r` values distinct), ruling out nonce-reuse recovery. This is the main barrier to third-party implementations of locked features (unlock, factory reset, firmware upgrade, telemetry consent).
 

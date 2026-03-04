@@ -1,12 +1,12 @@
 # LEGO Smart Play — BLE Protocol
 
-> **Note:** This was reverse engineered from Android HCI (btsnoop) captures and decompilation of the SmartAssist APK (Il2CppDumper). Some protocol details may be incomplete or wrong — not everything is visible in captured traffic, and some payloads are encrypted.
+> Reverse engineered from Android HCI (btsnoop) captures and APK decompilation (Il2CppDumper). Not everything is visible in traffic — some payloads are encrypted. May contain errors.
 
 ## Overview
 
-The brick exposes a GATT server when docked on its charging base. The primary interface is a register-based command/response protocol over the WDX (Wireless Data Exchange) service (`0xFEF6`).
+GATT server exposed when docked on charging base. Register-based command/response protocol over the WDX service (`0xFEF6`).
 
-When undocked and in play mode, the brick does not advertise via standard BLE. See [HARDWARE.md](HARDWARE.md) for details on play communication.
+Undocked bricks don't advertise via standard BLE. See [HARDWARE.md](HARDWARE.md) for play communication.
 
 ## BLE Advertisement
 
@@ -21,9 +21,9 @@ When docked, the brick advertises as:
 | Service UUIDs | `0xFEF6` (WDX) |
 | Manufacturer Data | `97 03 00 60 00 00 00 00` |
 
-The first two bytes of manufacturer data are the LEGO company identifier `0x0397` (little-endian). The remaining bytes are device-specific payload.
+First two bytes of manufacturer data are LEGO company ID `0x0397` (little-endian). Remaining bytes are device-specific.
 
-The brick uses BLE random addresses that rotate frequently. The same physical brick will appear as different addresses across scans. The stable identifier is the MAC address stored in register `0x84`, readable after connecting.
+BLE random addresses rotate frequently — same brick shows different addresses across scans. Stable identifier is the MAC in register `0x84`, readable after connecting.
 
 ## BLE Services
 
@@ -69,7 +69,7 @@ UUID base: `005fXXXX-3ff2-4ed5-b045-4c7463617865`
 
 ## Register Protocol
 
-All communication with the brick happens through the **Control Point** characteristic using a register-based protocol. Messages have three types:
+All communication goes through the **Control Point** characteristic. Three message types:
 
 | Type | Byte | Direction | Format |
 | --- | --- | --- | --- |
@@ -198,7 +198,7 @@ Volume is controlled via register `0x81`. The pattern is: check ready, write, ve
 
 ## Authentication
 
-The brick uses **ECDSA P-256** challenge-response authentication. The private key is held on LEGO's backend servers — the companion app proxies signing requests via `api/v1/commands/sign` on `p11.bilbo.lego.com`. See [BACKEND.md](BACKEND.md) for details on the backend API.
+**ECDSA P-256** challenge-response. Private key is server-side — the app proxies signing via `/commands/sign` on `p11.bilbo.lego.com`. See [BACKEND.md](BACKEND.md).
 
 ### Protocol
 
