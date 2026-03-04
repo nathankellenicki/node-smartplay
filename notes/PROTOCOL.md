@@ -6,7 +6,7 @@
 
 GATT server exposed when docked on charging base. Register-based command/response protocol over the WDX service (`0xFEF6`).
 
-Undocked bricks don't advertise via standard BLE. See [HARDWARE.md](HARDWARE.md) for play communication.
+Undocked bricks don't advertise via standard BLE — the firmware checks dock state once at boot and never re-checks. See [BLE Advertisement](#ble-advertisement) for full details and [HARDWARE.md](HARDWARE.md) for PAwR play communication.
 
 ## BLE Advertisement
 
@@ -24,6 +24,26 @@ When docked, the brick advertises as:
 First two bytes of manufacturer data are LEGO company ID `0x0397` (little-endian). Remaining bytes are device-specific.
 
 BLE random addresses rotate frequently — same brick shows different addresses across scans. Stable identifier is the MAC in register `0x84`, readable after connecting.
+
+### When Is The Brick Connectable?
+
+**Only when it boots while docked on a charging base.** Confirmed from firmware disassembly — there are no other triggers (no button, motion sensor, timer, or play-state transition that independently enables connectable advertising).
+
+| Scenario | BLE Connectable? |
+| --- | --- |
+| Booted while docked | Yes |
+| Booted while undocked | No — advertising is never started |
+| Undocked after booting docked | Likely yes — no re-check of dock state |
+| Brick-to-brick PAwR | No — non-connectable periodic advertising |
+| Firmware update (DFU) | Special DFU advertising only |
+
+The firmware performs a **one-time charger detection at boot** (`0xF0FC`). It reads a hardware status byte at `0x80942C` and tests bit 4 (dock/USB charger). If the bit is clear (not docked), advertising is never started and the brick is invisible to BLE scanners.
+
+If docked, the charger type byte at `0x801420` offset 0 is checked — only types `0x02` and `0x04` (two dock variants) enable connectable advertising. The charger identification uses FNV-1a hashing against hardware ID data and runs once at boot; there is no GPIO interrupt, polling loop, or timer that re-checks dock state at runtime.
+
+Once advertising is running, 17 call sites in the Cordio BLE connection state machine automatically restart advertising after connection lifecycle events (connect, disconnect, parameter change, link supervision timeout). These restarts do not re-check dock state — they unconditionally restart advertising. This means a brick that was docked at boot will likely remain connectable even if physically removed from the dock during operation.
+
+PAwR periodic advertising (used for brick-to-brick play communication) is a separate non-connectable advertising mode and does not make the brick discoverable to phones or apps. See [HARDWARE.md](HARDWARE.md) for PAwR details.
 
 ## BLE Services
 

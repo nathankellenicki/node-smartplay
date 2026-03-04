@@ -80,13 +80,35 @@ Read-only filesystem (ROFS):
 
 The copper coils also sense **distance, direction, and orientation** between nearby bricks. Self-organizing — no setup, no app, no central hub.
 
-### Data (PAwR)
+### Data (PAwR / BrickNet)
 
 Game state and events go over **BLE 5.4 PAwR (Periodic Advertising with Responses)**. Undocked bricks don't advertise via standard BLE — invisible to scanners.
 
 One brick is the **coordinator**, broadcasting periodic advertising trains. Others **synchronize** and respond in designated slots. Sessions are encrypted and authenticated.
 
 Internally called **BrickNet**. Firmware sources: `bnet_coord.c`, `bnet_resp.c`, `jam_bricknet_transport.c`.
+
+#### When PAwR Activates
+
+PAwR is **not** always active when undocked. It is triggered by **Smart Tags whose play content requires multi-brick communication**.
+
+1. A Smart Tag (tile or minifig) is placed on the brick
+2. The tag's play content is loaded from the ROFS `play.bin`
+3. The firmware checks the **content type byte** — only types `0x02` and `0x04` indicate multi-brick play
+4. If multi-brick: a PAwR session is initiated with a group UUID identifying the play experience (`0x7020162E` for type 2, `0xBF8C4668` for type 4)
+5. The first brick becomes the **coordinator**, starting periodic advertising
+6. Other bricks with compatible play content join as **responders**
+7. The semantic tree executor's **opcode 21** enables inter-brick messaging over the BrickNet transport
+
+Tags with single-brick play content (any type other than 2 or 4) do not activate PAwR. The brick plays locally without any BLE communication.
+
+#### Session Persistence
+
+If a brick power-cycles during an active PAwR session, the session state is persisted to flash. On next boot, the firmware reads the saved state and automatically resumes coordinator or responder mode if 2+ peers were recorded. See [FIRMWARE.md](FIRMWARE.md) for details.
+
+#### App-Side PAwR Registers
+
+WDX registers `0x1B`, `0x1C`, `0x25`, `0x26` manage an **existing** PAwR session (sync data, payload exchange, session membership). They cannot independently start PAwR — a Smart Tag with multi-brick content must be present.
 
 ### PAwR Network States
 

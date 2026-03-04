@@ -10,4 +10,5 @@ Reverse engineering notes for the LEGO Smart Play system. Pieced together from A
 | [HARDWARE.md](HARDWARE.md) | Chipset, features, smart tags, play engine, multi-brick communication |
 | [BACKEND.md](BACKEND.md) | LEGO backend API endpoints, command signing, ownership model |
 | [FILE_TRANSFER.md](FILE_TRANSFER.md) | WDX data channel protocol, on-device files, telemetry format, firmware upload |
+| [FIRMWARE.md](FIRMWARE.md) | Firmware image format, memory map, disassembly setup, source file list, version history |
 | [CONNECTKIT.md](CONNECTKIT.md) | LEGO's internal BLE SDK — hub types, protocol stacks, where Smart Brick fits |
