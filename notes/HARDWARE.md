@@ -54,7 +54,7 @@ LEGO calls this "near-field magnetic communication". They claim the brick can de
 | Type | Description |
 | --- | --- |
 | **Identity** | Smart Minifigs — character identity |
-| **Item** | Smart Tiles — play logic that defines the brick's role |
+| **Item** | Smart Tiles — content selector that tells the brick which play script to run |
 
 ### Tag Data Format
 
@@ -87,7 +87,13 @@ The UID is extracted by the firmware from the SPI response with two parsing path
 
 ### Tag Content Data
 
-The tag carries its own content specification — there is **no lookup table** in the firmware mapping tag IDs to content. The firmware reads the content fields directly from the tag.
+The tag carries **content identifiers**, not play logic. There is no lookup table mapping tag UIDs to content — instead, the tag's content fields tell the firmware which pre-existing assets to load from the ROFS. All actual play logic (sensor conditions, branching, state machines, PAwR messaging) lives in `play.bin` on the brick. The tag selects three independent things:
+
+1. **Script** (from `play.bin`) — which behavioral logic to run (e.g., react to motion, fire on color, PAwR combat)
+2. **Audio bank** (from `audio.bin`) — which set of sounds to play (e.g., swoosh, laser, explosion)
+3. **Animation bank** (from `animation.bin`) — which LED patterns to use
+
+This means different tags can share the same script but produce completely different experiences by referencing different audio and animation banks. For example, two vehicle tags could both use the same combat script (motion reactivity, color sensor firing, PAwR hit counting, damage progression) but with entirely different engine sounds, firing sounds, explosion effects, and LED patterns.
 
 After validation, the firmware reads content from the parsed tag event struct:
 
@@ -189,13 +195,19 @@ All specific behaviour lives in the **ROFS content files** (`play.bin`, `audio.b
 
 ```
 Smart Tag (content selector)
-  ↓ audio bank, class, variant, type
-ROFS content (play.bin, audio.bin, animation.bin)
-  ↓ resolved script + audio data
+  ↓ content class + variant → selects script from play.bin
+  ↓ audio bank             → selects sounds from audio.bin
+  ↓ animation bank         → selects LED patterns from animation.bin
+ROFS content
+  ↓ script = reactive logic (sensor conditions, branching, PAwR, state machines)
+  ↓ audio  = synthesizer instructions for ASIC
+  ↓ animation = LED timing/pattern data
 Firmware engine (generic)
   ↓ executes script, reads sensors, drives output
 Hardware (ASIC speaker, LEDs, PAwR radio)
 ```
+
+Different tags can share the same script but reference different audio and animation banks, producing different sounds and LED patterns with identical gameplay behaviour.
 
 ### Execution Pipeline
 
@@ -375,13 +387,17 @@ Content is **not indexed by tag ID**. Tags carry their own content references (a
 
 ### Content Indexing
 
-A Smart Tag's RFID data maps to ROFS content through:
+A Smart Tag's RFID data selects three independent assets from the ROFS:
 
-1. **Content index** (tag offsets 10–11, uint16) → selects 1 of 5 **presets** in the PPL preset table
-2. **Variant ID** (tag offsets 12–13, uint16) → selects 1 of 58 **script blocks** within that preset
-3. Script opcodes reference **audio clip IDs** (resolved through the AAP audio ID table) and **animation IDs** (resolved through the ANI animation ID table)
+| Tag Field | Offsets | Selects | From |
+| --- | --- | --- | --- |
+| Content index + variant ID | 10–13 | **Script** (behavioral logic) | `play.bin` — 1 of 58 script blocks via preset table |
+| Audio bank | 8 | **Sounds** (synthesizer instructions) | `audio.bin` — 1 of 3 audio banks, 154 clips |
+| Animation bank | 8 | **LED patterns** (timing + intensity) | `animation.bin` — 1 of 9 animation banks, 135 clips |
 
-Identity tags (minifigs) always use variant 1. Item tags (tiles) use the full variant ID for multiple script variations.
+The content index (offsets 10–11, uint16) selects 1 of 5 presets, and the variant ID (offsets 12–13, uint16) selects a script block within that preset. Identity tags (minifigs) always use variant 1. Item tags (tiles) use the full variant ID for multiple script variations.
+
+Because the three selections are independent, different tags can share identical gameplay behaviour while having completely different sounds and LED patterns.
 
 ### Script Profiling and PAwR Capability
 
@@ -396,11 +412,13 @@ Of the 58 script blocks in `play.bin` (v0.72.1), only **4 use distributed execut
 
 Script 42 is the only type-0x0E (Item tag) script with PAwR. It is by far the largest and most complex script in the file. The remaining 54 scripts are single-brick experiences.
 
-### Case Study: X-Wing Tag (Inferred)
+### Case Study: X-Wing and Imperial Turret Tags (Inferred)
 
-> The following reconstruction is **inferred** from matching observed physical behaviour (motion-triggered swoosh, color-triggered laser fire, PAwR hit counting, progressive damage states) against the script profiles in `play.bin`. The specific tag has not been read directly — the content field values are deduced from the firmware's content dispatch logic and the script characteristics. Confidence levels are noted.
+> The following reconstruction is **inferred** from matching observed physical behaviour against the script profiles in `play.bin`. Neither tag has been read directly — content field values are deduced from the firmware's content dispatch logic and script characteristics. Confidence levels are noted.
 
-**Identification:** Script 42 is the best candidate for the X-Wing behaviour. It is the only Item tag script with PAwR capability, and its profile matches the observed behaviour: 6 behavioral branches (enough for idle, motion, fire, hit, alarm, explode), 9 range checks (sensor threshold comparisons), 17 if-then-else blocks (complex conditional logic), and 71 table-dispatch lookups (many audio/animation references).
+#### Shared Script: Script 42
+
+Both the X-Wing and Imperial Turret exhibit PAwR combat behaviour (fire on red, hit counting, progressive damage, explosion). Script 42 is the **only** type-0x0E (Item tag) script with PAwR capability, so both tags must select it. They share identical gameplay logic but produce different experiences through different audio and animation bank selections.
 
 **Script 42 characteristics** (confirmed from binary analysis):
 
@@ -413,32 +431,41 @@ Script 42 is the only type-0x0E (Item tag) script with PAwR. It is by far the la
 - **Distributed execute:** 1 instance at script byte offset 1382, skip amount 7 — positioned late in the script, consistent with combat interaction being a later behavioral state
 - **No equality checks** (opcode 18) — color sensor detection appears to use narrow range checks instead, which is sensible for analog sensor readings
 
-**Inferred tag content fields:**
-
-| Field | Value | Confidence | Reasoning |
-| --- | --- | --- | --- |
-| Event type | 2 (Item tag placed) | High | Must be Item for type-0x0E preset dispatch |
-| Content type | `0x01` (Item) | High | Firmware dispatch at `0xEB26`: value 1 → type-0x0E preset group |
-| Sub-type | `0x01` (standard item) | Medium | Item tag parser at `0xCAFC` uses sub-type for format selection |
-| Content class | `0x04` | Medium | Script 42 is the 5th type-0x0E entry (0-indexed); preset matching at `0x32C98` compares content_class against registered presets |
-| Animation bank | `0x60` | Medium | Preset 42's value `0x0060` maps to ANI bank 0x60, which has a single entry (id=0x6022, index=34) — consistent with a unique per-item LED pattern |
-| PAwR content type | `0x02` or `0x04` | High | Required for PAwR activation; the script uses distributed execute |
-
 **Inferred behavioral branch mapping:**
 
-| Branch | Likely Behaviour | Evidence |
-| --- | --- | --- |
-| 1–2 | Idle + motion/swoosh | Range checks on byte `0x30` (5 instances with different thresholds suggest multi-axis acceleration) |
-| 3 | Color sensor / laser fire | Range checks on byte `0x21`/`0x27` (different sensor inputs from the accelerometer checks) |
-| 4–5 | PAwR combat interaction | Distributed execute at byte offset 1382; hit counter via PPL "other" count |
-| 6 | Alarm + explosion | Final branch; PPL completion triggers "destroyed" audio |
+| Branch | Likely Behaviour | X-Wing Experience | Imperial Turret Experience |
+| --- | --- | --- | --- |
+| 1–2 | Idle + motion detection | Flying swoosh sounds | Turret rotation sounds |
+| 3 | Color sensor trigger | Laser firing sound | Turret firing sound |
+| 4–5 | PAwR combat | Hit sounds on remote brick | Hit sounds on remote brick |
+| 6 | Alarm + destruction | X-Wing explosion | Turret explosion |
 
-**What's NOT known:**
-- The exact byte values of the tag's RFID memory (security format, CRC, raw encoding)
-- Which specific audio clip IDs correspond to swoosh vs laser vs hit vs explosion
+The motion detection branches (1–2) use the same accelerometer range checks in both cases. The **physical LEGO build** determines what motion triggers them — the X-Wing is held and moved freely (producing swoosh), while the turret sits on a rotating base (producing rotation). The script just sees "acceleration exceeded threshold" and plays from whichever audio bank the tag selected.
+
+#### Tag Content Comparison
+
+| Field | X-Wing | Imperial Turret | Confidence |
+| --- | --- | --- | --- |
+| Event type | 2 (Item placed) | 2 (Item placed) | High |
+| Content type | `0x01` (Item) | `0x01` (Item) | High |
+| **Script selection** | **Script 42** | **Script 42** | **High** — only type-0x0E script with PAwR |
+| **Audio bank** | **Different** | **Different** | **High** — different sounds observed |
+| **Animation bank** | **Different** | **Different** | **High** — different LED patterns observed |
+| Content class | Different values | Different values | Medium — selects different audio/animation banks |
+| PAwR content type | `0x02` or `0x04` | `0x02` or `0x04` | High — required for PAwR |
+
+The tags differ only in their **audio bank** and **animation bank** references. The script, event type, content type, and PAwR content type are the same. This is the key architectural insight: the tag's content class and variant select different audio/animation assets while the script selection (via preset type and content index) points to the same behavioral logic.
+
+#### What This Demonstrates
+
+The same reactive script handles both a flying vehicle and a stationary rotating turret. The script's sensor condition checks are generic — "did the accelerometer exceed this threshold?" — and it is the physical LEGO build, combined with the tag's audio/animation bank selection, that creates the distinct play experience. The firmware and script have no concept of "X-Wing" or "turret" — they only know sensor thresholds, audio bank IDs, and animation bank IDs.
+
+#### What's NOT known
+- The exact byte values of either tag's RFID memory (security format, CRC, raw encoding)
+- The specific content_class values for each tag
+- Which specific audio clip IDs correspond to swoosh vs rotation vs laser vs explosion
 - The exact sensor threshold values and what physical measurements they represent
-- Whether content_class `0x04` is truly the X-Wing or another vehicle in the same position
-- The sub-type format details beyond the first few bytes
+- Whether other Item tags with PAwR combat also share script 42, or if there are product-specific variants in future firmware
 
 ## Multi-Brick Communication
 
