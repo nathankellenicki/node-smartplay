@@ -36,16 +36,202 @@ Smart Tiles and Smart Minifigs use passive **ISO/IEC 15693** RFID (13.56 MHz). T
 
 ### NFC Scan
 
-Readable by a phone NFC reader, but memory is not accessible over standard 15693 commands — the ASIC uses **proprietary read commands**. Example scan (NXP TagInfo):
+Tag memory is **fully readable** using standard ISO 15693 commands from any NFC-capable phone — **no authentication required**. Earlier NXP TagInfo scans reported "0 bytes" because the app relied on the Get System Info memory size field, which this custom IC reports incorrectly; the actual memory is accessible via Read Single/Multiple Block commands.
+
+#### Identity Tag (Smart Minifig) — Scanned via Android NFC Tools
 
 | Field | Value |
 | --- | --- |
-| UID | `E0:16:5C:01:1D:37:E8:50` |
-| Technology | ISO/IEC 15693 |
-| IC Manufacturer | Unknown (code `0x16`) |
-| Memory | 0 bytes (not readable over standard 15693) |
+| UID | `E0:16:5C:01:25:84:18:BE` |
+| Technology | ISO/IEC 15693 (NfcV) |
+| IC Manufacturer | EM Microelectronic (code `0x16`) |
+| IC Reference | `0x17` (custom LEGO die — **not** EM4233SLIC) |
+| DSFID | `0x00` |
+| AFI | `0x00` |
+| Memory | 66 blocks × 4 bytes = **264 bytes** |
+| Data payload | 157–158 bytes (blocks 0–39), remainder zeros |
 
-`E0` is the ISO 15693 flag byte. Byte 2 (`0x16` = 22) is the IC manufacturer code — unknown vendor, likely custom silicon.
+`E0` is the ISO 15693 allocation class. Byte 2 (`0x16` = 22) is the IC manufacturer code — **EM Microelectronic** (the same company that makes the EM9305 BLE SoC). IC reference `0x17` does **not** match any off-the-shelf EM product (EM4233SLIC = `0x02`, EM4233 = `0x09`). This is a **custom LEGO die** fabricated by EM Microelectronic with 66 blocks (vs 32 for EM4233SLIC, 64 for EM4233).
+
+#### Get System Info Response
+
+```
+Command:  02 2B
+Response: 00 0F BE 18 84 25 01 5C 16 E0 00 00 00 41 03 17
+          │  │  └─────────UID──────────┘  │  │  └──mem──┘  │
+          │  info_flags                  DSFID AFI  66×4  IC_ref
+          flags (no error)
+```
+
+#### Reading Commands
+
+Standard ISO 15693 reads work without any Login or authentication:
+- `02 20 XX` — Read Single Block (block XX)
+- `02 23 XX YY` — Read Multiple Blocks (start XX, count YY)
+- `02 2B` — Get System Information
+
+No custom commands (`0xA0`–`0xDF`) or Login (`0xE4`) are needed.
+
+#### Raw Memory Dumps — Identity Tags (Smart Minifigs)
+
+**Tag 1: Pilot Luke Skywalker** — UID `E0:16:5C:01:25:84:18:BE`
+
+```
+Block  0: 00 9D 01 0C    Block 16: 12 13 1F 33    Block 32: 04 3B 47 4E
+Block  1: 01 86 84 CC    Block 17: DD BB E1 94    Block 33: AE 60 D5 9B
+Block  2: 84 C0 2C 26    Block 18: 1D B0 E7 15    Block 34: 43 D5 D8 38
+Block  3: 17 C7 F2 2F    Block 19: 6A 31 BA 42    Block 35: 88 B2 61 78
+Block  4: 6A FB FC 1A    Block 20: C6 12 BA 1E    Block 36: C1 C6 83 1F
+Block  5: EA C1 43 C3    Block 21: 3F 72 82 4A    Block 37: F2 03 0E 10
+Block  6: 7B F1 0E E8    Block 22: B7 F2 9E C3    Block 38: 57 2C 85 95
+Block  7: E4 2D 41 53    Block 23: C3 C5 17 47    Block 39: 29 00 00 00
+Block  8: 42 8F 59 68    Block 24: 02 D3 79 13    Blocks 40-65: 00 00 00 00
+Block  9: 1F B1 0B DD    Block 25: A5 05 D0 49
+Block 10: 15 83 B5 D7    Block 26: 52 9F C1 8B
+Block 11: FF 42 7A 4C    Block 27: 25 49 49 46
+Block 12: 29 EF 2B 2F    Block 28: CA 0D 0A 8D
+Block 13: F7 50 5A D1    Block 29: 2F 53 9B A2
+Block 14: 11 61 D8 49    Block 30: B3 50 2B 7F
+Block 15: E2 65 14 F3    Block 31: F4 93 DF A6
+```
+
+**Tag 2: Leia** — UID `E0:16:5C:01:1F:B7:A4:70`
+
+```
+Block  0: 00 9E 01 0C    Block 16: E7 1D AE D2    Block 32: 68 7B 7A 4A
+Block  1: 01 48 12 5F    Block 17: 4B 8A BC 1F    Block 33: D2 B2 E2 F3
+Block  2: 4E B3 0B 49    Block 18: D1 DC 93 B3    Block 34: 82 0F 37 C2
+Block  3: F3 76 E9 6F    Block 19: 7C 8B 63 4B    Block 35: 02 12 D3 58
+Block  4: A8 44 DE 7D    Block 20: 69 FD C4 B0    Block 36: AD 53 A1 6A
+Block  5: DE C1 FC 45    Block 21: FD BC 5D E7    Block 37: 3E 1B 73 D4
+Block  6: 92 A2 E9 D7    Block 22: E2 2C 98 F2    Block 38: D9 62 94 E1
+Block  7: 9C 46 B8 F1    Block 23: 97 B2 8D EB    Block 39: 98 95 00 00
+Block  8: A0 FE 43 0A    Block 24: 93 58 71 75    Blocks 40-65: 00 00 00 00
+Block  9: EE 8B 31 A2    Block 25: 0E 7E 69 2B
+Block 10: 6F 6F A3 05    Block 26: CE AA 93 43
+Block 11: DD 78 21 D6    Block 27: 5B E9 2C 45
+Block 12: BD 33 1D C2    Block 28: C3 68 F2 D3
+Block 13: 04 21 2D EE    Block 29: E2 79 C3 15
+Block 14: 69 98 E3 F8    Block 30: D5 82 BC FE
+Block 15: 1C 6B 8E 9D    Block 31: D8 55 D1 37
+```
+
+#### Raw Memory Dumps — Item Tags (Smart Tiles)
+
+**Tag 3: Lightsaber Tile** — UID `E0:16:5C:01:1B:F7:4D:57`, Content ID `0x7E`
+
+```
+Block  0: 00 7E 01 0C    Block 16: 8C B7 25 DA
+Block  1: 01 6D BC B0    Block 17: 9D 6B 10 82
+Block  2: 50 6C DA ED    Block 18: 3D 2B EF 36
+Block  3: CF D2 A4 62    Block 19: DE 8E 71 32
+Block  4: 54 05 A4 8D    Block 20: F8 E2 CF 9F
+Block  5: 51 59 FB CA    Block 21: 25 71 78 86
+Block  6: 70 6F 56 FF    Block 22: EC 48 30 2C
+Block  7: C1 D1 FD 22    Block 23: EE 55 A9 D3
+Block  8: BD 52 C8 71    Block 24: 17 80 93 E1
+Block  9: 1A 0B 55 11    Block 25: 51 72 59 F3
+Block 10: 3E 04 81 2B    Block 26: 10 EB 6A 8C
+Block 11: 9C D2 DD B0    Block 27: 44 B2 93 C5
+Block 12: 0D C0 D9 F2    Block 28: 96 9F F1 9A
+Block 13: 5B D5 1B BB    Block 29: 54 1F D3 87
+Block 14: D9 7A 0A 2A    Block 30: 58 91 0D F4
+Block 15: BA 97 2F 9E    Block 31: 01 94 00 00
+                         Blocks 32-65: 00 00 00 00
+```
+
+**126 bytes of data** (blocks 0–31, block 31 partial). Blocks 32–65 are all zeros.
+
+**Tag 5: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Content ID `0x7E`
+
+Data is **byte-for-byte identical** to Tag 3 (same content ID `0x7E`, same 126 bytes). See "Cloning Discovery" below.
+
+**Tag 4: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Content ID `0x6B`
+
+```
+Block  0: 00 6B 01 0C    Block 16: DB 4A D1 13
+Block  1: 01 24 D4 3E    Block 17: BC A3 04 18
+Block  2: 82 9F 37 1F    Block 18: 02 6C AD EB
+Block  3: 47 AB 8F 36    Block 19: 41 C9 71 CC
+Block  4: 36 42 63 71    Block 20: AE C1 CD DC
+Block  5: D5 54 F2 B8    Block 21: 92 79 8E 13
+Block  6: F4 C5 B5 AF    Block 22: 25 97 06 A2
+Block  7: E9 10 BF 00    Block 23: 3D 39 E9 D6
+Block  8: 83 33 2F 74    Block 24: F4 1E 33 9B
+Block  9: F7 CA 47 EF    Block 25: B2 B9 AF 46
+Block 10: 1A B0 79 86    Block 26: C2 22 E8 00
+Block 11: 41 4E CE CA    Blocks 27-65: 00 00 00 00
+Block 12: BD 34 F8 DA
+Block 13: A6 79 C6 47
+Block 14: 35 BD 10 31
+Block 15: 3C 37 F8 DC
+```
+
+**107 bytes of data** (blocks 0–26, block 26 partial). Blocks 27–65 are all zeros.
+
+#### Tag Comparison
+
+All four tags share the same **5-byte cleartext header** `00 XX 01 0C 01`, where byte 1 is the content ID:
+
+```
+             Byte 0  Byte 1  Byte 2  Byte 3  Byte 4   Payload   Blocks used
+Luke (ID):     00     9D      01      0C      01      157 bytes   0–39
+Leia (ID):     00     9E      01      0C      01      158 bytes   0–39
+Tile 1:        00     7E      01      0C      01      126 bytes   0–31
+Tile 2:        00     6B      01      0C      01      107 bytes   0–26
+```
+
+| Byte | Value | Meaning |
+| --- | --- | --- |
+| 0 | `0x00` | Fixed — always zero |
+| 1 | varies | **Content ID** |
+| 2 | `0x01` | Fixed — same for both Identity and Item tags |
+| 3 | `0x0C` | Fixed — format version or flags |
+| 4 | `0x01` | Fixed — unknown |
+
+**Item tags are shorter than Identity tags.** Identity tags use ~157–158 bytes across blocks 0–39; Item tiles use ~107–126 bytes across blocks 0–26/31. Both types leave blocks 32+ (or 40+) as zeros.
+
+The two Item tiles have **different content IDs** (`0x7E` = Lightsaber, `0x6B` = X-Wing) — each tile content gets its own ID, as expected.
+
+#### Known Content IDs
+
+| ID | Tag Type | Content |
+| --- | --- | --- |
+| `0x6B` | Item (tile) | X-Wing |
+| `0x7E` | Item (tile) | Lightsaber |
+| `0x9D` | Identity (minifig) | Pilot Luke Skywalker |
+| `0x9E` | Identity (minifig) | Leia |
+
+#### Encrypted Region (bytes 5+)
+
+From byte 5 onward, tags with **different content IDs** are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with AES or similar block cipher encryption.
+
+#### Cloning Discovery
+
+Two physical Lightsaber tiles (Tags 3 and 5) with **different UIDs** contain **byte-for-byte identical EEPROM data**:
+
+| | UID | Content ID | Data |
+| --- | --- | --- | --- |
+| Tag 3 | `E0:16:5C:01:1B:F7:4D:57` | `0x7E` | 126 bytes |
+| Tag 5 | `E0:16:5C:01:1B:FE:9F:53` | `0x7E` | 126 bytes (identical) |
+
+This proves:
+1. **Encryption is NOT UID-diversified** — the UID plays no role in the ciphertext
+2. **All tags of the same content type have identical EEPROM data** — it's a fixed blob per content ID
+3. **Cloning should work** — writing the raw bytes to any compatible ISO 15693 tag should produce a working clone
+4. **Custom tags are feasible** — if the encrypted format can be understood, new content blobs could potentially be crafted
+
+The ASIC does **not** use the tag UID for decryption. The encrypted data is a static per-content-ID payload programmed identically into all physical tags of that type at the factory.
+
+#### Security Model
+
+LEGO's tag security operates at **two layers**:
+
+1. **EM9305 ↔ ASIC authentication** (AES-128 + ECC): The EM9305 firmware derives a 16-byte key from ROFS config data + hardware OTP, written to ASIC register `0xF04084`. This authenticates the EM9305 to the ASIC — prevents rogue processors from using the ASIC. Per-brick unique (hardware OTP dependent).
+
+2. **Tag data encryption** (algorithm unknown, in ASIC silicon): Raw EEPROM content is encrypted. The ASIC decrypts it after reading, before passing to the EM9305. The decryption key is in the ASIC's internal logic — not accessible from the EM9305 firmware or via JTAG. All bricks share the same decryption capability (tags work on any brick).
+
+Tag access itself is **completely open** — no password, no page protection, no privacy mode. Anyone with an NFC reader can dump the raw EEPROM. But the data is meaningless without the ASIC's decryption key.
 
 LEGO calls this "near-field magnetic communication". They claim the brick can detect which face a tag is on with millimeter precision (**NFC positioning** — per Wired article, not independently verified).
 
@@ -144,38 +330,253 @@ Multi-layer validation, **not crypto-based** (no AES/HMAC/signature in tag conte
 The copper coils are time-multiplexed between tag reading, wireless charging, brick-to-brick positioning (NPM), and audio. The magnetics scheduler allocates "tag slots" at microsecond precision. Tag reading yields to audio playback.
 
 ```
-1. ASIC detects tag in field (interrupt bit 21 at 0xF00860)
-2. Magnetics scheduler allocates tag time slot
-3. Inventory scan per axis — ISO 15693 anti-collision resolves multiple tags
-4. Full read by tag ID via proprietary 15693 command
-5. SPI transfer: ASIC → EM9305
-6. UID extraction from SPI response (flag byte determines format)
-7. Compare against stored UID at 0x809430 (same tag / new tag / removed)
-8. Parse: extract checksum, type, security, content fields
-9. Verify: CRC → security format → security info → payload
-10. Tag DB: add/remove, duplicate detection, slot limits
-11. Tag claiming: prevents multiple bricks claiming same tag
-12. Content loading: tag type → play.bin lookup → play engine starts
-13. Event dispatch: 8-case jump table at 0x66BF8 triggers play content
+  ┌─────────────────────────────────────────────────────────────┐
+  │  ASIC Coils (13.56 MHz ISO 15693 RF)                       │
+  │  → Inventory, anti-collision, tag read — all in hardware    │
+  └────────────────────┬────────────────────────────────────────┘
+                       │ Memory-mapped registers (0xF01800–0xF04BFF)
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  SPI Driver (0x32304–0x326D0)                               │
+  │  → Status via 0xF0180C, data via 0xF01808                  │
+  │  → DMA via 0xF01814, 512-byte transfers                    │
+  │  → 14 × 32-bit words copied from 0xF01810+                 │
+  └────────────────────┬────────────────────────────────────────┘
+                       │ Coil interrupt (vector 0xAA, level 0x12)
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Interrupt Handler (0x3B728)                                │
+  │  → Per-channel dispatch from handler table at 0x808854      │
+  │  → 600ms timer-based coil scheduling                       │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  ASIC-to-RAM Copy (0x69944–0x699E2)                        │
+  │  → 4 × 20-byte blocks to 0x8078A8–0x8078E4                │
+  │  → Dirty bits set in 0x807890/0x807898 (atomic)            │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Tag Scan Loop (0x67634)                                    │
+  │  → Polls 0x501E8 for tag presence                          │
+  │  → Gets buffer via 0x501FC                                 │
+  │  → Dual-read + complement validation                       │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  UID Extraction (0x4FC58)                                   │
+  │  → Parses ISO 15693 response flags (bit 0=error, bit 3=fmt)│
+  │  → Extracts 6-byte UID → (32-bit low, 16-bit high)        │
+  │  → Compares against stored UID at 0x809430                 │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Message Dispatcher (0x1D2A8)                               │
+  │  → Handler table at 0x80B514                               │
+  │  → Type 2 → TLV parser, Type 4 → removal, Type 5 → play  │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  TLV Content Parser (0x4EC58)                               │
+  │  → Structure at 0x80B538, max size at 0x80B580             │
+  │  → Block type 0x2000 = new packet, 0x1000 = continuation   │
+  │  → Reassembles multi-packet TLV data                       │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Content Callback + Manufacturer Dispatch (0x5C96C)         │
+  │  → FNV hash dedup at 0x1D27E                               │
+  │  → IC manufacturer dispatch: EM(0x16)/TI(0x07)/ST(0x0D)   │
+  │  → 2D handler table at ROM 0x37CF00 + state machine        │
+  └────────────────────┬────────────────────────────────────────┘
+                       │
+                       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Play Engine Action Handlers (0x35xxxx)                     │
+  │  → Content indexing → play.bin script selection             │
+  │  → Semantic tree executor starts                           │
+  └─────────────────────────────────────────────────────────────┘
 ```
 
 Tag polling runs on a **600ms timer** — the ASIC periodically scans for tag presence.
 
 ### Tag Discovery (BLE Interface)
 
-Tag events are exposed over BLE via WDX registers (`rpc_handlers_tag_int.c`). The app can subscribe to tag events, receiving notifications for tag placement, removal, and state changes. Tag discovery has an enable flag and subscriber count.
+Development firmware (v0.54 and earlier) referenced `rpc_handlers_tag_int.c`, suggesting tag events were once planned for BLE exposure. In production firmware v0.72.1, the complete WDX dispatch table was enumerated and **no tag-event registers exist**. The tag pipeline is a closed loop: physical RFID → ASIC → EM9305 firmware → play engine. There is no BLE path to inject or observe tag events.
+
+Register `0x92` (undocumented, read-only) returns a single status byte from `0x807A78` — the ASIC status register. It may reflect NFC reader state but cannot accept injected tag data.
+
+### Tag Protocol Architecture
+
+The ISO 15693 RF protocol is handled **entirely by the DA000001-01 ASIC**, not the EM9305 firmware. The EM9305 does not construct ISO 15693 command frames, calculate CRC-16, or implement anti-collision. Instead, it communicates with the ASIC through two interfaces:
+
+1. **Memory-mapped hardware registers** at `0xF04000`–`0xF044FF` — direct hardware control
+2. **Software register interface** — ~64 registers (IDs 0x02–0x3E) mirrored in RAM at `0x8078A0`–`0x807AA8`
+
+The EM9305 writes configuration to ASIC registers; the ASIC performs the ISO 15693 inventory, anti-collision, and tag read autonomously, then deposits results into registers for the EM9305 to read.
+
+#### ASIC Hardware Registers (Tag-Related)
+
+Two register ranges: `0xF04000`–`0xF040FF` for low-level tag/coil control, `0xF04400`–`0xF04BFF` for tag operations and FIFO.
+
+| Address | R/W | Name | Purpose |
+| --- | --- | --- | --- |
+| `0xF04004` | R | TAG_CTRL | Status / config readback |
+| `0xF04008` | W | TAG_CMD | Full command word (`0x93C` = inventory+read). Used for coil modes 2–3 |
+| `0xF04009` | W | TAG_SUBCMD | Simple command select: 0=basic inventory, 1=addressed mode. Used for coil modes 0–1 |
+| `0xF0400C` | RW | TAG_TIMING | Timing / carrier configuration |
+| `0xF04034` | W | TAG_CONFIG | General tag configuration |
+| `0xF04040` | RW | SLOT_CTRL | Slot / channel control |
+| `0xF04044` | W | ANTICOLL_MASK | Anti-collision mask (standard ISO 15693 16-slot: `0x5555`, `0xFFFF`, `0x3333`, `0x0F0F`, `0xFF`) |
+| `0xF04050` | RW | ANTICOLL_CFG | Anti-collision config (bit 4 = addressed mode) |
+| `0xF04054` | R | TAG_STATUS | Tag presence: bit 5=detected, bit 6=active, bit 7=data valid, bits 8-9=type |
+| `0xF04079` | W | IRQ_CONFIG | Interrupt configuration |
+| `0xF04080` | RW | DMA_CONFIG | DMA / transfer configuration |
+| `0xF040A4` | W | COIL_CAL_A | Coil calibration A |
+| `0xF040A8` | R | COIL_CAL_B | Coil calibration B (readback) |
+| `0xF040B0` | W | COIL_TRIM | Coil trim X/Y (packed via `vpack2hl`) |
+| `0xF040BC` | RW | SLOT_MASK | Slot enable mask / per-slot anti-collision results |
+| `0xF04400` | W | RF_ENABLE | RF field control: 4=tag scan, 1=positioning mode |
+| `0xF04401` | W | RF_MODE | RF mode: 1=positioning, 3=extended range |
+| `0xF04404` | W | OP_TRIGGER | Operation trigger/reset (0=reset before new op) |
+| `0xF0440C` | R | OP_STATUS | Operation status: bit 0=complete, bit 1=data ready |
+| `0xF04410` | W | POS_OFFSET | Position offset X/Y (packed via `vpack2hl`) |
+| `0xF04420` | W | TAG_DATA_W | Tag data write register |
+| `0xF04424` | W | TAG_SLOT_CMD | Tag slot command: bits 0-5=slot index (0–39), bits 10-11=2-bit type (from slot struct offset 80) |
+| `0xF04428` | R | TAG_DATA_R | Tag response data (halfword) |
+| `0xF0484C` | RW | COIL_CONFIG | Coil drive: bits 2-5=drive level, bits 6-11=field strength, bit 14=extended range |
+| `0xF04800`–`0xF04BFF` | W | FIFO | 256-entry halfword TX FIFO — data loaded here gets transmitted in the ISO 15693 RF frame |
+
+**Command register protocol:** Modes 0–1 use the simple `TAG_SUBCMD` register (0/1 toggle selects between two pre-configured ASIC command sequences). Modes 2–3 use the full `TAG_CMD` register with command word `0x93C` — this is an ASIC-native opcode, **not** a raw ISO 15693 command byte. The ASIC generates ISO 15693 RF frames internally. Data payloads are loaded into the FIFO at `0xF04800+` before triggering the command.
+
+**Coil configuration table** at ROM `0x3062E8`: Per-mode 3-byte entries (drive level, field strength, extended flag). Values scale from low-power (mode 0: drive=1, strength=0xDF) to high-power (mode 25+: drive=0x25, strength=0xFD). Applied to `COIL_CONFIG` register at `0xF0484C`.
+
+#### ASIC Software Registers (Tag Data in RAM)
+
+~64 registers (IDs 0x02–0x3E) mirrored in RAM at `0x8078A0`–`0x807AA8`. A dirty bitmap at `0x807890` and pending bitmap at `0x807898` track which registers have been updated (set atomically via `clri`/`seti`).
+
+| Reg ID | RAM Address | Size | Purpose |
+| --- | --- | --- | --- |
+| 0x04 | `0x8078A8` | 20 bytes | Tag data block A (coil config A) |
+| 0x05 | `0x8078BC` | 20 bytes | Tag data block B |
+| 0x06 | `0x8078D0` | 20 bytes | Tag data block C |
+| 0x07 | `0x8078E4` | 20 bytes | Tag data block D |
+| 0x09 | `0x8078F8` | packed 16-bit | Coil position data (via `vpack2hl`) |
+| 0x0A | `0x807900` | packed 16-bit | Coil position data (via `vpack2hl`) |
+| 0x16 | `0x807914` | 4 bytes | Tag UID word |
+| 0x24 | `0x80792A` | 1 byte | Tag configuration byte |
+| 0x2A–0x2C | `0x807930`–`0x8079F8` | 3 × 100 bytes | Large data buffers |
+| 0x2E | `0x807A60` | 24 bytes | Tag data payload (complex 24-byte repack from byte pairs to 32-bit words) |
+| 0x2F | `0x807A78` | 1 byte | **ASIC status byte** (exposed via WDX register 0x92) |
+| 0x38 | `0x807A90` | 16 bytes | Tag UID buffer (big-endian packed) |
+| 0x3D | `0x807AA2` | 6 bytes | Extended tag info (3 × 16-bit) |
+
+#### Tag Interrupt Flow
+
+Tag detection is interrupt-driven via `0xF00860`:
+
+| Interrupt Bit | Meaning | Action |
+| --- | --- | --- |
+| Bit 25 | Tag detected | Enable coil at `0xF04400`, set flag at `0x80DF1C` |
+| Bit 16 | Tag read complete | Read `0xF04054` status, check coil, extract data |
+| Bit 21 | Tag data ready | Read data, check presence at `0xF0407D`, set timing (4ms or 10ms) |
+| Bit 22 | Coil/antenna event | Clear interrupt, adjust scan timing |
+
+After interrupt processing, the ASIC-to-RAM copy functions at `0x69944`–`0x699E2` transfer 4 × 20-byte tag data blocks from the ASIC result buffer into the RAM mirror. Each calls the register-change notification at `0x2A9E0`.
+
+#### Multi-Manufacturer Tag Support
+
+The firmware supports tags from **multiple IC manufacturers**. After tag data arrives in RAM, a manufacturer dispatch at `0x5C96C` reads the IC manufacturer code from `0x80B944+0x8` and branches to manufacturer-specific handlers:
+
+| MFR Code | Manufacturer | Type Index | Notes |
+| --- | --- | --- | --- |
+| 0x07 | Texas Instruments | 0 | Secondary IC ref check required |
+| 0x0D | STMicroelectronics | (check) | IC ref must be 0xF |
+| 0x11 | (unknown) | (check) | IC ref must be 0x16 |
+| **0x16** | **EM Microelectronic** | **2** | **Production Smart Tags** |
+| 0x17 | Texas Instruments (new) | 1 | Direct accept |
+| 0x18 | (other) | 1 | Same path as TI(17) |
+
+The type index selects handler functions from a **2D dispatch table** at ROM `0x37CF00`. One dimension is the tag sub-type (r0), the other is the manufacturer type index. TI and EM tags go through **different handler functions** — the firmware does not simply treat all tags the same after inventory.
+
+The byte table at ROM `0x37CFA0` returns a per-manufacturer configuration value used for further dispatch. The EM path consistently returns **54** for all sub-types, while TI paths return varying values (88–204). This likely reflects different tag data payload formats for each manufacturer.
+
+**Implication for custom tags:** Standard TI or ST ISO 15693 tags would be recognized by the manufacturer dispatch, but they would go through the TI/ST handler path — not the EM path that production Smart Tags use. The TI handler functions (e.g., `0x35BF9C`) are different from the EM handler functions (e.g., `0x35BFF4`). Whether TI-format tag data can produce valid content fields through the TI path is unknown. The safest approach for custom tags is to use the EM path (manufacturer code 0x16) with properly formatted data.
+
+#### Tag Data Format (Parsed)
+
+The tag content parser at `0x4EC58` processes data in a TLV-style format after it reaches the RAM mirror:
+
+```
+byte[0:1]  Tag type ID (12-bit type + 2-bit block type in bits 12-13)
+           block type: 0=header, 1=data continuation, 2=security
+byte[2:3]  Content length (uint16 LE)
+byte[4..]  Content payload (LEGO Smart Tag data)
+```
+
+This parser feeds into the tag content structure at `0x80B944`, which is the convergence point for all manufacturer paths before content enters the play engine.
+
+#### No CRC in Firmware
+
+The EM9305 firmware contains **no CRC-16 or CRC-32 calculation** for tag data (confirmed by exhaustive search — no CRC constants or functions found). ISO 15693 CRC-16 is handled entirely by the ASIC hardware. The `0xDEADDD00` value found in the code is an event-struct validity sentinel, not a data integrity check.
+
+### Tag IC Identification: Custom EM Microelectronic Die
+
+The LEGO Smart Tags use a **custom ISO 15693 IC** fabricated by EM Microelectronic. It is **not** an off-the-shelf EM4233SLIC or EM4233.
+
+| Property | Value |
+| --- | --- |
+| Manufacturer | EM Microelectronic (code `0x16`) |
+| IC Reference | **`0x17`** (custom — EM4233SLIC=`0x02`, EM4233=`0x09`) |
+| Memory | **66 blocks × 4 bytes = 264 bytes** (vs 32 blocks for EM4233SLIC) |
+| Frequency | 13.56 MHz (ISO/IEC 15693) |
+| Access control | **None** — no password, no page protection, no privacy mode |
+| Data protection | **Encryption** — content encrypted by ASIC, not by tag IC |
+| UID format | `E0:16:XX:XX:XX:XX:XX:XX` |
+| DSFID | `0x00` |
+| AFI | `0x00` |
+
+The custom die supports standard ISO 15693 commands (Inventory, Read Single/Multiple Block, Get System Info) and has significantly more memory than the EM4233SLIC (264 bytes vs 128 bytes). Whether it supports EM4233-style custom commands (EAS, Login, etc.) is unknown — they are not needed to read tag data.
+
+#### EM4233 Family Reference (for comparison)
+
+The EM4233 family from EM Microelectronic supports custom commands in the `0xA0`–`0xDF` range (EAS, password, page protection) and proprietary commands (`0xC3` Fast Read, `0xE4` Login). The LEGO custom die likely shares this command set architecture but with extended memory and a unique IC reference (`0x17`). None of these commands are needed to read LEGO tags — the data is accessible via standard reads.
+
+**Key observation:** The ASIC sends command word `0x93C` to its internal command register, **not** raw ISO 15693 command bytes. The ASIC internally generates the correct ISO 15693 frames. The `0x93C` opcode is not a Login sequence — it's simply a read command, since no authentication is needed at the tag level.
+
+### SPI Bus Architecture
+
+The ASIC is NOT accessed via traditional SPI bit-banging. It is memory-mapped into the EM9305's address space at two register ranges:
+
+| Range | Purpose |
+| --- | --- |
+| `0xF01800`–`0xF01860` | SPI/DMA control — command trigger, status, data, DMA buffer config |
+| `0xF04000`–`0xF04BFF` | Tag/coil operations — command registers, anti-collision, FIFO |
+
+The SPI driver at `0x32304`–`0x326D0` manages transfers through a 3-state machine:
+- **State 0** (COMPLETE): Transfer finished, data available
+- **State 1** (ACTIVE): DMA in progress, spin-wait for `0xF0180C` bit 0
+- **State 2** (IDLE): Ready for new transfer, write 1 to `0xF01800` to start
+
+ASIC link status at `0xF0383B` must have bits 0-1 = 3 (link established) before data is accepted.
 
 ### Firmware Sources
 
 From debug strings in development builds:
 
 ```
-tag_asic.c, tag_message_parser.c, tag.c, tag_db.c,
+asic.c, tag_message_parser.c, tag.c, tag_db.c,
 tag_claim.c, tag_manager_impl.c (→ tag_manager.c in v0.54+),
 rpc_handlers_tag_int.c
 ```
 
-Debug strings were stripped in production (v0.65+) but all functional code is present — confirmed by SPI register accesses, tag UID comparison logic, interrupt handlers, and the 8-case event dispatch jump table in v0.72.1.
+Debug strings were stripped in production (v0.65+) but all functional code is present — confirmed by SPI register accesses, tag UID comparison logic, interrupt handlers, and the 8-case event dispatch jump table in v0.72.1. The tag ASIC driver source is simply `asic.c` (not `tag_asic.c`).
 
 ## Play Engine
 

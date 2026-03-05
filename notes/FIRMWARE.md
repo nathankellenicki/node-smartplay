@@ -266,17 +266,54 @@ Ghidra 12.0.4 does **not** have ARC/ARCv2 processor support. Open PRs (#3006, #3
 
 Debug strings stripped in production (v0.65+) but all functional code is present. Key functions identified by MMIO accesses, RAM struct references, and assert module hashes.
 
-**ASIC SPI driver** (`0x32304`–`0x326D0`): Low-level SPI communication with the custom LEGO ASIC. Configures registers at `0xF01800`–`0xF0181C`. Transaction flow: trigger transfer (`st 1,[0xF01800]`), poll interrupt (`[0xF0180C]` bit 0), read results from `[0xF01808]`. Post-transfer processing loops over 8 tag slots reading timing data.
+**ASIC SPI driver** (`0x32304`–`0x326D0`): Memory-mapped communication with the custom LEGO ASIC (not traditional SPI bit-banging). Control registers at `0xF01800`–`0xF01860`. Functions:
+- `0x32304` — Read SPI byte count from `[0xF01804]`
+- `0x32310` — Reset/init: set state=IDLE, clear data pointer, configure `[0xF01804]` (count=0, enable=1, chip_select=1, timeout=max)
+- `0x32340` — Set DMA buffer: `[0xF01814]` = buffer base, length = 512
+- `0x323A0` — Transfer start: checks state at struct offset `0x4C` (2=ready → write 1 to `[0xF01800]`, 0=wait, else=error). Spin-waits for `[0xF0180C]` bit 0 (complete)
+- `0x3245C` — Post-transfer processing: clears interrupt via `[0xF00820]`, reconfigures DMA (1024-byte extended buffer)
+- `0x325EC` — Data copy: reads `[0xF0180C]` status, checks ASIC link at `[0xF0383B]` (bits 0-1 must = 3), copies 14 × 32-bit words from `[0xF01810]+`, reads tag data word from `[0xF01808]`
+- `0x326D0` — Pre-transfer setup: reads coil channel, loads config from `[0xF00480+channel]`
 
-**ASIC interrupt handler** (`0x336E4`): Reads interrupt status from `[0xF00860]`, dispatches by bit field — bit 0 (tag data ready), bit 4 (magnetics cycle), bit 16 (slot complete), bit 21 (tag detection), bit 22 (timer), bit 25 (magnetics complete). Acknowledges via `[0xF00868]`.
+Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=IDLE (ready for new transfer).
 
-**Tag subsystem init** (`0x2A17C`): Zeros the 80-byte ASIC tag state struct at `0x80DCC8`. Configures ASIC control register at `[0xF0404C]` with value `0x48`. Enables SPI channels 0, 1, 3. Sets up 600ms periodic tag polling timer via `0x33CAC`.
+**ASIC interrupt handler** (`0x336E4`): Reads interrupt status from `[0xF00860]`, dispatches by bit field — bit 25 (tag detected → enable coil at `0xF04400`), bit 16 (tag read complete → read `0xF04054` status), bit 21 (tag data ready → read data, check presence at `0xF0407D`), bit 22 (coil/antenna event). Acknowledges via `[0xF00868]`.
 
-**Coil control** (`0x33FD0`): Configures copper coils via `[0xF0484C]` for tag reading at different power levels (modes 0–9+). Stores mode state at `0x801BE8` and magnetics flag at `0x809392`.
+**Coil interrupt handler** (`0x3B6F0`): Per-channel handler dispatched from ISR at `0x3B728` (saves r0–r13, lp registers). Configured with vector `0xAA`, level `0x12`. For each coil channel 0–7: computes bitmask `1<<channel`, clears interrupt via `[0xF00820]`. Channels 4–5 dispatch to tag-event callbacks from handler table at `0x808854`.
+
+**Hardware timer** (`0x3B828`): Configured with vector `0x55`. Reads clock source from `[0xF03800]`: if bit 0 set, uses base period 24 (0x18), otherwise 48 (0x30). Multiplied by 60,000 (0xEA60) for timer compare value.
+
+**Coil subsystem init** (`0x2A080`): Disables all coil interrupts. Calls `0x32594` with SPI channel count = 24, then `0x32584` to enable SPI mode 0. Sets all coil timers to `-1` (disabled) at `[0xF01810]`. Resets interrupt controller at `[0xF00814]` (all masked), then selectively enables bits 1 and 8. Resets coil event handlers for channels 0–3, sets timer period (256, then 1).
+
+**Tag subsystem init** (`0x2A17C`): Zeros 0x80 bytes at `0x80DCC8`. Configures ASIC: `[0xF0404C]` = `0x48` (SPI clock divider), `[0xF0404C+0]` = `0xFF` (all channels enabled), coil modes `[0xF01845]=1` (coil 1 active), `[0xF01844]=2` (coil 0 passive), `[0xF01847]=0` (coil 3 off). Enables coil interrupts via `0x325C4`/`0x325A4`, sets 600ms periodic polling timer, state flag at `[0x80DCCC]=1`.
+
+**Coil control** (`0x33FD0`): Configures copper coils via `[0xF0484C]` for tag reading at different power levels (modes 0–9+). Stores mode state at `0x801BE8` and magnetics flag at `0x809392`. Coil mode table at ROM `0x3062E8` provides per-mode 3-byte entries applied as: `COIL_CONFIG = (old & 0xFFFFB003) | (byte1<<2 & 0x3C) | (byte2_masked<<6); if byte0>6: set bit 14 (extended range)`.
+
+**Tag command dispatch** (`0x33D54`): Branches by coil mode (`r8`): modes 0/1 write to `TAG_SUBCMD` (`[0xF04009]` = 0 or 1) for simple pre-configured ASIC sequences. Modes 2/3 load data into FIFO at `0xF04800+`, then write `0x93C` to `TAG_CMD` (`[0xF04008]`). FIFO is 256-entry halfword buffer accessed as `[index<<2 & 0x3FC + 0xF04800]`.
+
+**Tag slot command** (`0x340B0`): Builds `TAG_SLOT_CMD` register value from slot table at `[0x80FD60]`: `value = slot_index | (type_bits<<10)` where type_bits are bits 0–1 of byte at `slot_struct[80]`. Slot index clamped to max 39.
+
+**Anti-collision setup** (`0x3410C`): Takes mask and flag parameters. Computes `mask = (input & 0xFC) >> 1 | 1` (enable bit), writes to `[0xF04044]`. Then reads `[0xF04050]`, conditionally sets/clears bit 4 (addressed mode) based on flag, writes back.
+
+**ASIC-to-RAM copy** (`0x69944`–`0x69AA8`): Family of functions copying tag data from ASIC result buffers to the RAM mirror. Each calls register-change notification at `0x2A9E0` which sets dirty/pending bits in bitmaps at `0x807890`/`0x807898` (atomic via `clri`/`seti`):
+- `0x69944` → `0x8078A8` (20 bytes, register 4) — tag data block A
+- `0x6996C` → `0x8078BC` (20 bytes, register 5) — tag data block B
+- `0x69994` → `0x8078D0` (20 bytes, register 6) — tag data block C
+- `0x699BC` → `0x8078E4` (20 bytes, register 7) — tag data block D
+- `0x699E4` → `0x8078F8` (packed 16-bit via `vpack2hl`, register 9) — coil position
+- `0x69A0C` → `0x807900` (packed 16-bit via `vpack2hl`, register 10) — coil position
+- `0x69A34` → `0x80792A` (1 byte, register 0x24) — tag config
+- `0x69A4C` → `0x807AA2` (3 × 16-bit, register 0x3D) — extended tag info
+- `0x69A70` → `0x807A78` (1 byte, register 0x2F) — ASIC status (→ WDX register 0x92)
+- `0x69A88` → `0x807A60` (24 bytes, register 0x2E) — tag payload (complex repack: byte pairs → 32-bit words)
+
+**Tag content parser** (`0x4EC58`): Parses tag data from the RAM mirror in a TLV-style format: `[type_id:2][content_length:2][payload:N]`. The 16-bit type ID encodes a 12-bit tag type (bits 0–11) and a 2-bit block type (bits 12–13: 0=header, 1=data continuation, 2=security). Allocates a buffer, copies payload, and feeds into the tag content structure at `0x80B538` / `0x80B944`.
 
 **Tag UID extraction** (`0x4FC58`): Parses ISO 15693 / NFC-V response from SPI buffer. Checks flag byte bit 0 (error) and bit 3 (format variant). Two parsing paths — standard reads bytes [7]–[12], compact reads [1]–[6]. Assembles 6 bytes into two 32-bit words via shift/or.
 
-**Tag scan loop** (`0x67634`): Core tag detection loop. Calls `0x4FC58` for UID extraction, compares against stored UID at `[0x809430]`/`[0x809434]` via XOR. Detects: same tag (no change), new tag (dispatch add), tag removed (dispatch remove). Validates against all-ones (no tag present).
+**Tag scan loop** (`0x67634`): Core tag detection loop. Dequeues tag data from ring buffer, calls parser for each tag, compares against stored UID at `[0x809430]`/`[0x809434]` via XOR. Detects: same tag (no change), new tag (dispatch add), tag removed (dispatch remove). Validates against all-ones (no tag present).
+
+**Manufacturer dispatch** (`0x5C96C` / `0x63B20`): After tag data is parsed, reads IC manufacturer code from `0x80B944+0x8` and branches by manufacturer: 0x07 (TI, r14=0), 0x0D (ST, IC ref check), 0x16 (EM Micro, r14=2), 0x17 (TI new, r14=1). The type index r14 selects handler functions from a 2D dispatch table at ROM `0x37CF00`, indexed as `ROM[r0*32 + r14*4 + 0x37CF00]`. A secondary byte table at `0x37CFA0` returns per-manufacturer configuration values — EM(16) consistently returns 54, TI returns varying values (88–204). TI and EM paths use different handler functions throughout.
 
 ### Tag → Play Engine Pipeline
 
