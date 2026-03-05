@@ -6,7 +6,7 @@ Extracted from the LEGO SmartAssist APK (`com.lego.smartassist`, codename "Horiz
 
 LEGO's internal BLE SDK, shipped as a Unity package (`com.lego.sdk.dpt.connectkit`) inside all companion apps. Integrates every generation of connected hardware — WeDo 2.0 (2016) through Smart Brick (2025) — behind a single interface. Identifies hub type from BLE advertisements, selects the right protocol stack, and exposes uniform services. App code calls `GetBatteryLevel()` the same way regardless of whether the hub speaks LWP3, WDX, or P11/RPC.
 
-The Smart Brick (AudioBrick) uses the WDX stack. Full extracted reference in `randomfiles/CONNECT_KIT.md`.
+The Smart Brick (AudioBrick) uses the WDX stack.
 
 ## Hub Types
 

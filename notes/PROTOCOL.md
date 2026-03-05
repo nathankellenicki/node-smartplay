@@ -149,6 +149,45 @@ The brick sends an idle beacon `03 02 00 0C 00 00 00 F4 01` unprompted before an
 | FactoryReset | `0x95` | Write | — | Factory reset (requires auth) |
 | TravelMode | `0x96` | Read/Write | — | Travel/shipping mode |
 
+### Undocumented Registers
+
+Present in firmware but **not in the ConnectKit SDK** — the official app does not use them. Discovered by comparing the firmware dispatch table against the SDK enum.
+
+| Register | Hex | Access | Size | Description |
+| --- | --- | --- | --- | --- |
+| — | `0x83` | Read | 4 bytes | Internal firmware state — exact meaning unknown |
+| — | `0x92` | Read | 1 byte | Reads from RAM `0x807A78`, written by ASIC/tag driver — possibly tag reader status |
+| — | `0x94` | Read | 1 byte | Hardware timer/clock readout from MMIO peripheral |
+
+Register `0x92` is the most interesting — its backing RAM address is written from the tag ASIC driver area of the firmware (`0x694D8`–`0x69A74`). It may reflect NFC tag reader state.
+
+### PAwR Registers (Brick-to-Brick)
+
+Handled by a secondary write handler at `0x6CC8C`. Not used by the app over BLE — these are internal to the PAwR brick-to-brick subsystem.
+
+| Register | Hex | Access | Description |
+| --- | --- | --- | --- |
+| — | `0x1B` | Write | PAwR train sync (16 bytes config data) |
+| — | `0x1C` | Write | PAwR data exchange (8 bytes, triple-buffered) |
+| — | `0x25` | Write | PAwR session parameter A |
+| — | `0x26` | Write | PAwR session parameter B |
+
+### Smart Tags and BLE
+
+**Smart Tag events are NOT exposed over BLE.** The tag subsystem is entirely internal to the brick:
+
+1. Tags are detected by the NFC ASIC and processed by the play engine
+2. Tag state changes are broadcast to other bricks via PAwR
+3. The phone/app has zero awareness of tags — the ConnectKit SDK has no tag API, no tag methods, no tag fields
+
+The firmware's WDX register dispatch has **no register that reports tag UID, tag type, or tag events**. No code path exists from tag detection to BLE notification sending. This was confirmed by:
+
+- Complete enumeration of all WDX read/write handlers in the firmware dispatch at `0x3FA24`
+- Cross-referencing against the ConnectKit SDK `IWdxProtocolProcessor.Properties` enum (exact match, no missing entries)
+- Tracing the tag scan loop (`0x67634`) — it terminates in internal message queues and PAwR broadcasts, never reaching the BLE notification path (`0x38BF0`)
+
+Register `0x92` is the closest thing to tag-visible state over BLE, but it returns only a single status byte, not tag identification data. Probing it during tag placement may reveal whether it reflects reader state.
+
 ## Connection Lifecycle
 
 ### Phase 1: CCCD Subscription
