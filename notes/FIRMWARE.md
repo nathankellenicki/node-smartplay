@@ -603,16 +603,24 @@ The PPL (Play Preset Library) file contains all play scripts as flat linearized 
 
 #### Preset Table (offset 0x10)
 
-61 entries of 8 bytes each: `[type:4][value:4]`. Six distinct type IDs group content by category:
+61 entries of 8 bytes each: `[type:4][value:4]`. The first 3 entries are preamble/default script references (type=0x0B, values=[80, 64, 96]). The remaining 58 entries map 1:1 to the 58 scripts. The `value` field is a **selection weight** for weighted random script selection within each preset type group.
 
-| Type | Count | Script Indices | Description |
-| --- | --- | --- | --- |
-| 0x03 | 16 | 3–18 | Standard play content (1 PAwR-capable: script 14) |
-| 0x06 | 5 | 19–23 | Interactive content |
-| 0x09 | 11 | 24–34 | Ambient/background |
-| 0x0B | 6 | 0–2, 35–37 | Short responses (1 PAwR-capable: script 1) |
-| 0x0E | 16 | 38–53 | Item tag play sequences (1 PAwR-capable: script 42) |
-| 0x10 | 7 | 54–60 | Identity/system content (1 PAwR-capable: script 54) |
+Six distinct type IDs group content by category:
+
+| Type | Count | Script Indices | Description | Header Flag |
+| --- | --- | --- | --- | --- |
+| 0x03 | 16 | #0–#15 | Identity tag (minifig) play content (1 PAwR-capable: script 14) | 0x00 |
+| 0x06 | 5 | #16–#20 | Item tag (tile) play content | 0x00/0x50 |
+| **0x09** | **11** | **#21–#31** | **NPM/proximity reactions** — short reactive scripts triggered by brick-to-brick positioning events | **0x40** |
+| 0x0B | 3 | #32–#34 | System/default scripts (startup, transitions) | 0x40 |
+| 0x0E | 16 | #35–#50 | Timer/idle ambient play sequences (1 PAwR-capable: script 42) | 0x00/0x50 |
+| 0x10 | 7 | #51–#57 | Button/shake responses (1 PAwR-capable: script 54) | 0x50 |
+
+**Type 0x09 (NPM/proximity)** scripts are structurally distinct from all other types:
+- All 11 have the unique header flag byte `0x40` at script header position 11 (only shared with system type 0x0B)
+- 10 of 11 are exactly 101 bytes (the 11th is 111 bytes) — the same template with different audio/animation references
+- Selection weights are evenly distributed (6.5–12.1%), meaning roughly equal probability when a proximity event fires
+- These scripts define short reactive behaviours (sounds, LED flashes) that play when another brick is detected nearby
 
 #### Script Directory (offset 0x1F8)
 
@@ -687,6 +695,21 @@ The play event handler at `0x52588` maps tag RFID data to scripts:
 
 Identity tags (minifigs) force variant = 1 (always the same script). Item tags use the full variant ID to select from multiple possible scripts within the chosen preset.
 
+#### NPM Event → Script Routing
+
+NPM events do **not** arrive via the tag content indexing path above. They enter through the play engine's ring buffer as pre-built events with a fixed content signature hash (`0xC47A2B46`). The routing:
+
+1. NPM event builder at `0x50A94` serializes: type=`0x1E`, sub=`0x1B`, hash=`0xC47A2B46`, state=1(near)/2(far)
+2. Ring buffer at `0x80D944` queues the event
+3. Dispatcher at `0x52588` calls content hash lookup at `0x1660C` — compares 16-bit content hash from event against session table at `0x80927C`
+4. If no active session matches → event silently dropped
+5. If matched → routes to session's script via `0x16B64` → `0x4C1D0` (second hash verification against script slot at `0x809270+0xC`)
+6. Script handler at `0x4C630` → `0x4C5F4` checks PAwR capability flag (bit 1 at script+40) → state 5 handler at `0x1EE98`
+
+**Scripts must opt in** to NPM events: the PAwR capability flag at byte offset 40 of the script structure must have bit 1 set, AND the running session's content signature must match the NPM event hash. Type 0x09 scripts (with header flag `0x40`) are the designated NPM recipients.
+
+The NPM event hash `0xC47A2B46` does not appear anywhere in play.bin — it is a firmware-level constant. The preset type 0x09 scripts respond to NPM events because the firmware maps incoming NPM protocol events to type 0x09 during script selection, not because the scripts contain the hash.
+
 #### PAwR-Capable Scripts
 
 Only 4 of 58 scripts use distributed execute (handler 21 / PAwR messaging):
@@ -720,6 +743,21 @@ Script 42 is the largest and most complex script in the file, and the only type-
 | 51 | 233 | 0 | No | 7 | 1 | 13 |
 | 52 | 103 | 0 | No | 3 | 1 | 9 |
 | 53 | 69 | 0 | No | 3 | 1 | 5 |
+
+#### Content Growth Across Firmware Versions
+
+ROFS content extracted from all available firmware images:
+
+| Version | Scripts | Audio Clips | Anim Clips | play.bin | audio.bin | ROFS Decompressed |
+| --- | --- | --- | --- | --- | --- | --- |
+| v0.46.0 | 53 | 200 | 225 | 14,414 B | 333,404 B | 358,564 B |
+| v0.48.2 | 56 | 201 | 227 | 15,500 B | 350,239 B | 376,780 B |
+| v0.54.0 | 55 | 188 | 166 | 18,653 B | 146,287 B | 175,764 B |
+| v0.65.0 | 52 | 155 | 132 | 20,286 B | 132,824 B | 163,052 B |
+| v0.66.1 | 58 | 154 | 135 | 22,690 B | 132,569 B | 165,372 B |
+| v0.72.1 | 58 | 154 | 135 | 22,690 B | 132,569 B | 165,372 B |
+
+Between v0.48 and v0.54, audio.bin dropped from 350 KB to 146 KB — the audio format switched from a larger representation to the current synthesizer instruction format. Scripts have been both added and removed across versions (53 → 56 → 55 → 52 → 58). play.bin has grown steadily (14 KB → 23 KB) while audio.bin decreased.
 
 ### String Table Offsets
 
@@ -783,6 +821,8 @@ npm_play.cpp, npm_engine.cpp, npm_processing_chain.cpp,
 pose_estimator.cpp, pose_tracker.cpp, pose_filter.cpp, ambiguity_filter.cpp
 ```
 
+NPM (Near-field Positioning/Magnetics) debug strings were stripped by v0.65 but the underlying code is likely still present — the same stripping pattern was observed with the tag subsystem, whose code was confirmed functional in production firmware. `npm_play.cpp` indicates a play engine interface. The NPM subsystem has not been traced in detail in the v0.72.1 disassembly — the function addresses are not yet identified.
+
 Play engine (from dev builds):
 
 ```
@@ -790,6 +830,183 @@ play_execution.c, play_stack_executor.c, play_engine_message_handler.c,
 play_file_resolver.c, play_distributed.c, play_detector.c,
 ppl_preset_resolver.c
 ```
+
+## NPM (Near-field Positioning/Magnetics) System
+
+The NPM subsystem is **fully present and functional** in production firmware v0.72.1, despite having no debug strings (those were stripped between v0.54.0 and v0.65.0). The code handles brick-to-brick magnetic field measurement, 3D pose estimation, and feeding positioning data into the play engine.
+
+### NPM Code Location
+
+All NPM code resides in the magnetics region `0x34D00`–`0x35FFF` (binary offsets), with helpers in `0x1E000`–`0x1E200` and `0x38E00`–`0x39000`. The play engine interface functions are at `0x505F0` and `0x50A94`.
+
+### Complete NPM Function Map
+
+| Address | Name | Description |
+| --- | --- | --- |
+| `0x1E160` | `npm_init_caller` | Reads coil baseline from `0x8068F0`, passes callback `0x34D78` to `npm_init` |
+| `0x1E184` | `npm_measurement_caller` | Subtracts baseline from raw coil values, calls `npm_counter_check` |
+| `0x34D38` | `npm_result_callback` | NPM-to-play-engine bridge. On result=1: reads filtered XYZ, sends play event (0x1E/0x1B/0xC47A2B46). On result!=1: sends NPM state event |
+| `0x34D80` | `npm_read_filtered_xyz` | Reads filtered XYZ from `0x80389C`/`A0`/`A4`, converts float to fixed-point via `fcvt32` |
+| `0x34DAC` | `npm_init` | Stores callback at `0x80DB30`, initializes filter state at `0x80389C`–`A4`, clears counter at `0x801962` |
+| `0x34DEC` | `npm_counter_check` | Reads counter from `[0x801962]`, returns true if < 101 (max 100 measurements per cycle) |
+| `0x34DFC` | **`npm_process`** | **Main NPM function** (27 float ops). Full pipeline: convert 3 coil halfwords to float, compute magnitude (sqrt(x^2+y^2+z^2)), normalize, scale by 1000, apply IIR filter (alpha=0.5), store results, invoke callback |
+| `0x35CD0` | `npm_preprocess` | Large function (r13–r25). Subtracts baseline from `0x808418`/`1C`/`20`, computes difference magnitude, checks threshold 0xB505 (46341), updates state at `0x808600`–`0x808614` |
+| `0x35E3C` | `npm_get_state` | Returns `[0x808448]` (NPM processing state) |
+| `0x35E48` | `npm_get_mode` | Returns byte at `[0x806C17]` (NPM mode: 0=active, nonzero=inactive) |
+| `0x35E54` | `npm_update_state` | Updates state at `0x808448` and `0x808600` |
+| `0x35EE0` | `npm_float_convert` | Converts coil measurements to 6 float values (3 components + 3 processed) |
+| `0x35F80` | `npm_post_filter` | Post-processing after IIR filter output |
+| `0x38EE8` | `npm_pose_change_handler` | Validates XYZ range (±32767). In-range: stores to `0x8068F0`, schedules next measurement (mode 12). Out-of-range: sends play event (0x28/0x1B/0x9153122C) |
+| `0x50A94` | `play_event_builder_npm` | Builds NPM play event message with type 0x1E, sub-type 0x1B, hash 0xC47A2B46. Enqueues to play engine ring buffer via `0x51094` |
+| `0x505F0` | `play_event_builder_npm_oor` | Builds out-of-range NPM play event (type 0x28, sub-type 0x1B, hash 0x9153122C) |
+
+### NPM RAM Layout
+
+| Address | Size | Contents |
+| --- | --- | --- |
+| `0x801962` | 2 | Measurement counter (halfword, resets after 100) |
+| `0x80389C` | 4 | Filtered X component (IEEE 754 float, IIR output) |
+| `0x8038A0` | 4 | Filtered Y component (IEEE 754 float, IIR output) |
+| `0x8038A4` | 4 | Filtered Z component (IEEE 754 float, IIR output) |
+| `0x8068F0` | 6 | Current NPM measurement (3 signed halfwords: X, Y, Z) |
+| `0x806C17` | 1 | NPM mode byte (0=active, nonzero=inactive) |
+| `0x808418` | 4 | Baseline X reference (word) |
+| `0x80841C` | 4 | Baseline Y reference (word) |
+| `0x808420` | 4 | Baseline Z reference (word) |
+| `0x808448` | 4 | NPM processing state (0=needs init, nonzero=running) |
+| `0x808600`–`0x808614` | 24 | Extended NPM state (6 words: accumulated values for delta processing) |
+| `0x80DB30` | 4 | Callback function pointer (set during init) |
+
+### NPM Processing Pipeline
+
+```
+ASIC Interrupt (0x336E4)
+    |
+    | bit 25: magnetics_complete flag set at 0x80DF1C
+    | bit 4: magnetics cycle, reads coil state from 0x80DD84
+    |
+    v
+Coil Control (0x33FD0)
+    |
+    | Configures coil modes via MMIO 0xF0484C
+    | Mode > 6: sets magnetics flag 0x809392 (NPM active)
+    | Config table at ROM 0x3062E8 (binary 0x62E8)
+    |
+    v
+npm_measurement_caller (0x1E184)
+    |
+    | Reads 3 raw halfwords from coil hardware
+    | Subtracts baseline from 0x8068F0
+    |
+    v
+npm_preprocess (0x35CD0)
+    |
+    | Computes delta from baseline (0x808418/1C/20)
+    | Absolute value comparison against threshold 0xB505
+    | Updates running state in 0x808600-0x808614
+    |
+    v
+npm_process (0x34DFC)  *** CORE NPM FUNCTION ***
+    |
+    | 1. Read 3 signed halfwords (X, Y, Z coil measurements)
+    | 2. Check measurement counter at [0x801962] (every 10th sample)
+    | 3. Convert to float via fcvt32
+    | 4. Compute magnitude: sqrt(x^2 + y^2 + z^2)
+    | 5. Normalize: (x/mag, y/mag, z/mag)
+    | 6. Scale by 1000.0 (float 0x447A0000)
+    | 7. IIR low-pass filter (alpha=0.5, float 0x3F000000):
+    |      filtered = old + (old - new) * 0.5
+    | 8. Store filtered XYZ to 0x80389C/A0/A4
+    | 9. Call callback at [0x80DB30] with result code
+    |
+    v
+npm_result_callback (0x34D38)
+    |
+    |-- result == 1 (valid measurement):
+    |     npm_read_filtered_xyz (0x34D80)
+    |       -> reads 0x80389C/A0/A4, converts float->fixed
+    |     npm_pose_change_handler (0x38EE8)
+    |       -> validates range ±32767
+    |       -> stores to 0x8068F0 (current measurement)
+    |       -> schedules next measurement cycle (mode 12)
+    |     play_event_builder_npm (0x50A94)
+    |       -> sends play event: type=0x1E, sub=0x1B
+    |       -> FNV-1a hash: 0xC47A2B46
+    |       -> enqueues to play engine ring buffer (0x51094)
+    |
+    |-- out of range:
+    |     play_event_builder_npm_oor (0x505F0)
+    |       -> sends play event: type=0x28, sub=0x1B
+    |       -> FNV-1a hash: 0x9153122C
+    |
+    v
+Play Engine Event Ring Buffer (0x51094)
+    |
+    v
+Play State Machine (0x6F178)
+    State 5: "sensor active" — reads sensor signature
+    at [0x80D804+6], compares against NPM event content
+```
+
+### NPM Play Events
+
+The NPM system generates two types of play events:
+
+| Event | Type | Sub-type | FNV-1a Hash | Meaning |
+| --- | --- | --- | --- | --- |
+| Valid measurement | `0x1E` | `0x1B` | `0xC47A2B46` | NPM detected valid position/orientation change |
+| Out of range | `0x28` | `0x1B` | `0x9153122C` | Coil measurement exceeded ±32767 range |
+
+These events are enqueued via the standard play event message builder pattern (checks BrickNet availability via `0x6CEC8`, initializes session via `0x51078`, matches tag UID via `0x50FDC`, serializes, and enqueues via `0x51094`).
+
+### NPM vs Tag Reading: Coil Modes
+
+The ASIC coil controller at `0x33FD0` distinguishes NPM from tag reading by mode:
+
+- **Modes 0–6**: Tag reading (RFID, tag detection, identity). Magnetics flag `0x809392` is NOT set.
+- **Modes > 6**: NPM positioning. Magnetics flag `0x809392` IS set, enabling the NPM measurement pipeline.
+
+The coil configuration table at ROM `0x3062E8` (binary offset `0x62E8`) contains per-mode register values written to MMIO `0xF0484C`.
+
+### v0.54.0 NPM Debug Strings (stripped in production)
+
+Earlier firmware v0.54.0 contains the following NPM debug strings (all absent in v0.72.1):
+
+| Offset (v0.54) | String | Source File |
+| --- | --- | --- |
+| `0x6EE9C` | — | `rpc_handlers_npm.cpp` |
+| `0x6EFF5` | — | `magnetics_helpers.c` |
+| `0x6F023` | — | `magnetics_scheduler.c` |
+| `0x6F0A0` | "NPM Task Queue is full, cleaning queue" | `npm_play.cpp` |
+| `0x6F0C7` | — | `npm_play.cpp` |
+| `0x6F0D4` | — | `npm_processing_chain.cpp` |
+| `0x6F0F7` | — | `pose_estimator.cpp` |
+| `0x6F10A` | — | `pose_tracker.cpp` |
+| `0x6F11B` | — | `pose_filter.cpp` |
+| `0x6F12B` | — | `ambiguity_filter.cpp` |
+| `0x7055C` | "NPM Task (Action = {}, Offset_us = {})" | — |
+| `0x706EC` | "NPM Task StartTime is invalid" | — |
+| `0x7085F` | "Tag position found" | — |
+| `0x70B41` | "Unable to add NPM Task to queue" | — |
+| `0x716B5` | — | `magnetics_control.c` |
+| `0x71AC0` | — | `npm_engine.cpp` |
+| `0x72261` | "NPM reservation duration too short" | — |
+
+### NPM → Play Engine → Script Bytecode
+
+The NPM system feeds positioning data into the play engine via event messages. The play engine's state machine at `0x6F178` processes these events in **state 5** ("sensor active"), comparing the NPM content signature against the current play content. Content matches trigger play continuation; mismatches cause content transitions.
+
+The semantic tree executor does NOT directly read NPM hardware — it operates on pre-computed state buffers populated by the play engine from NPM events. The 5 bytecode bytes that map to opcode 16 (range check signed: `0x18`, `0x21`, `0x27`, `0x30`, `0x5B`) encode different value types for comparing pre-loaded sensor state, not direct hardware sensor IDs. The NPM data enters the script execution context through the play event ring buffer and the sensor monitoring command (play command 5, via `0x4E1BC`).
+
+### Float Math Budget
+
+| Region | Float Ops | Purpose |
+| --- | --- | --- |
+| `0x34D00`–`0x35FFF` | ~55 | **NPM processing** (magnitude, normalize, IIR filter) |
+| `0x41000`–`0x46FFF` | ~745 | Application (NOT NPM — animation interpolation, play engine math) |
+| `0x52000`–`0x55FFF` | ~825 | Audio synthesizer |
+
+The NPM processing uses 55 float operations across its function chain, concentrated in `npm_process` (27 ops) and `npm_preprocess` (28 ops). The APP region float math at `0x41000`–`0x46FFF` does NOT reference NPM RAM addresses and is unrelated to positioning.
 
 ## Firmware Versions
 
