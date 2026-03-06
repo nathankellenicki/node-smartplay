@@ -282,11 +282,19 @@ X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 
 | Byte | Value | Meaning |
 | --- | --- | --- |
-| 0 | `0x00` | Fixed — always zero |
-| 1 | varies | **Content ID** |
-| 2 | `0x01` | Fixed — same for both Identity and Item tags |
+| 0 | `0x00` | Fixed across all known tags — always zero |
+| 1 | varies | **Content ID** (observed) |
+| 2 | `0x01` | Fixed across all known tags |
 | 3 | `0x0C` | Fixed — format version or flags |
 | 4 | `0x01` | Fixed — unknown |
+
+**Content ID field size is uncertain.** Byte 1 varies per tag and is the only byte observed to change, but bytes 0 and 2 being constant across just 7 known tags doesn't prove they aren't part of a wider content ID field. A future firmware/tag generation could use bytes 0 and/or 2 to extend beyond 255 unique IDs. We cannot determine the true field width because:
+
+1. **The EM9305 firmware never sees the cleartext header.** The ASIC reads raw EEPROM, decrypts it, and sends a restructured response over SPI. The firmware contains zero references to any known content ID value (`0x9D`, `0xA9`, etc.) or header constants (`0x0C`).
+2. **The companion app has no NFC functionality.** The SmartAssist app communicates with the brick over BLE only — it never reads tags directly via phone NFC. No tag content ID parsing exists in the IL2CPP dump.
+3. **The cleartext content ID is consumed solely by the ASIC silicon.** It likely selects the decryption key/route, but the ASIC's internal logic is opaque. The actual content identity used by the play engine comes from the **decrypted payload** as a 32-bit content reference (offset 8 of the tag event struct).
+
+The cleartext header may exist for future use cases (e.g., phone-based tag identification without decryption) or may be purely an ASIC-internal routing mechanism.
 
 **Item tags are shorter than Identity tags.** Identity tags use ~157–169 bytes across blocks 0–39 (or 0–42 for Vader); Item tiles use ~107–126 bytes across blocks 0–26/31. Both types leave remaining blocks as zeros.
 
