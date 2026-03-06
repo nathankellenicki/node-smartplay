@@ -95,7 +95,76 @@ Block 14: 11 61 D8 49    Block 30: B3 50 2B 7F
 Block 15: E2 65 14 F3    Block 31: F4 93 DF A6
 ```
 
-**Tag 2: Leia** — UID `E0:16:5C:01:1F:B7:A4:70`
+**Tag 1b: Jedi Luke Skywalker** — UID `E0:16:5C:01:1D:37:E8:50`, Content ID `0x9D`
+
+```
+Block  0: 00 9D 01 0C    Block 16: 12 13 1F 33    Block 32: 04 3B 47 4E
+Block  1: 01 86 84 CC    Block 17: DD BB E1 94    Block 33: AE 60 D5 9B
+Block  2: 84 C0 2C 26    Block 18: 1D B0 E7 15    Block 34: 43 D5 D8 38
+Block  3: 17 C7 F2 2F    Block 19: 6A 31 BA 42    Block 35: 88 B2 61 78
+Block  4: 6A FB FC 1A    Block 20: C6 12 BA 1E    Block 36: C1 C6 83 1F
+Block  5: EA C1 43 C3    Block 21: 3F 72 82 4A    Block 37: F2 03 0E 10
+Block  6: 7B F1 0E E8    Block 22: B7 F2 9E C3    Block 38: 57 2C 85 95
+Block  7: E4 2D 41 53    Block 23: C3 C5 17 47    Block 39: 29 00 00 00
+Block  8: 42 8F 59 68    Block 24: 02 D3 79 13    Blocks 40-65: 00 00 00 00
+Block  9: 1F B1 0B DD    Block 25: A5 05 D0 49
+Block 10: 15 83 B5 D7    Block 26: 52 9F C1 8B
+Block 11: FF 42 7A 4C    Block 27: 25 49 49 46
+Block 12: 29 EF 2B 2F    Block 28: CA 0D 0A 8D
+Block 13: F7 50 5A D1    Block 29: 2F 53 9B A2
+Block 14: 11 61 D8 49    Block 30: B3 50 2B 7F
+Block 15: E2 65 14 F3    Block 31: F4 93 DF A6
+```
+
+Data is **byte-for-byte identical** to Tag 1 (Pilot Luke Skywalker). Different physical minifig, different UID, same content.
+
+**Tag 2: Darth Vader** — UID `E0:16:5C:01:1F:C8:8E:45`, Content ID `0xA9`
+
+```
+Block  0: 00 A9 01 0C    Block 16: 88 5F 47 57    Block 32: 90 B8 88 B6
+Block  1: 01 2A 72 06    Block 17: 30 80 09 64    Block 33: 08 57 3C D2
+Block  2: 94 F4 E5 26    Block 18: 0D C5 9A 51    Block 34: 6E 29 A8 1A
+Block  3: 64 D6 CA C9    Block 19: 88 F9 DD 30    Block 35: E2 E3 5E A0
+Block  4: 21 D9 96 98    Block 20: 88 A9 E6 03    Block 36: 30 11 7D F4
+Block  5: 19 C2 F2 53    Block 21: 99 A3 EC E7    Block 37: 48 80 E8 03
+Block  6: 7B 9A 87 CB    Block 22: 46 87 3A B6    Block 38: 53 13 DF 2D
+Block  7: D0 48 9F 30    Block 23: EE 87 53 73    Block 39: 46 79 2F C3
+Block  8: 60 2F 81 8A    Block 24: FE 22 30 F7    Block 40: 76 24 8C DE
+Block  9: 63 DA E3 9F    Block 25: 6C DA 7A 90    Block 41: 9A 65 84 C3
+Block 10: 71 4F 6A 7E    Block 26: 54 AE 2A 2F    Block 42: 3F 00 00 00
+Block 11: 77 E4 33 2E    Block 27: 11 55 59 15    Blocks 43-65: 00 00 00 00
+Block 12: 62 09 F8 DE    Block 28: 2E 4B A3 69
+Block 13: 49 89 1D D7    Block 29: E3 01 25 55
+Block 14: 2C 57 29 4D    Block 30: 21 4F DB 4F
+Block 15: BA E3 E9 A0    Block 31: A5 F0 B7 95
+```
+
+**169 bytes of data** (blocks 0–42).
+
+**Tag 3: Emperor Palpatine** — UID `E0:16:5C:01:1F:BB:14:18`, Content ID `0xAB`
+
+```
+Block  0: 00 AB 01 0C    Block 16: 7D 12 B5 71    Block 32: E9 AD DC C8
+Block  1: 01 07 24 FD    Block 17: AE 4A EF DA    Block 33: 4F 9D CF D5
+Block  2: 04 5C A7 E3    Block 18: B9 43 82 36    Block 34: FC CD 00 01
+Block  3: FD 2A BD 4E    Block 19: 79 CF D2 1B    Block 35: 5A C4 7B 82
+Block  4: 94 2E 07 69    Block 20: 6E E8 76 59    Block 36: AB D3 EC 99
+Block  5: 6A 35 FC BB    Block 21: 1C D9 04 11    Block 37: 35 51 74 B5
+Block  6: 9C 55 31 EE    Block 22: 24 FF 3A 0A    Block 38: F5 50 EF FD
+Block  7: 69 46 A5 4E    Block 23: 21 C2 5A 9D    Block 39: B0 4A 01 8A
+Block  8: 3A 4C 25 84    Block 24: 73 7A 02 7D    Block 40: 96 53 4D 21
+Block  9: 76 4D 27 FA    Block 25: 3C E4 D4 FF    Block 41: 1E 74 67 17
+Block 10: 53 AF BD E7    Block 26: 32 78 31 32    Block 42: 2E 02 03 00
+Block 11: DF 9A A5 55    Block 27: A2 3B 7B A5    Blocks 43-65: 00 00 00 00
+Block 12: 7B F2 C4 6B    Block 28: 74 50 26 12
+Block 13: 72 9F E6 DB    Block 29: ED 41 5B C0
+Block 14: 80 AC 0B D8    Block 30: BA 1C 6C 57
+Block 15: A9 96 46 57    Block 31: 3C C5 CB C7
+```
+
+**171 bytes of data** (blocks 0–42).
+
+**Tag 4: Leia** — UID `E0:16:5C:01:1F:B7:A4:70`
 
 ```
 Block  0: 00 9E 01 0C    Block 16: E7 1D AE D2    Block 32: 68 7B 7A 4A
@@ -116,9 +185,36 @@ Block 14: 69 98 E3 F8    Block 30: D5 82 BC FE
 Block 15: 1C 6B 8E 9D    Block 31: D8 55 D1 37
 ```
 
+**Tag 5: R2-D2** — UID `E0:16:5C:01:26:19:58:B2`, Content ID `0x4A`
+
+```
+Block  0: 00 4A 01 0C
+Block  1: 01 24 B4 10
+Block  2: E7 C0 D0 7D
+Block  3: 2D FD B5 13
+Block  4: F9 0D 49 9A
+Block  5: 3C B6 45 4F
+Block  6: FB 90 BF 80
+Block  7: 59 18 C1 85
+Block  8: 68 57 0F CE
+Block  9: FE 3D D8 60
+Block 10: 47 B1 C9 05
+Block 11: 2B 16 AE A1
+Block 12: 7C 4C 16 B4
+Block 13: AF AF 94 82
+Block 14: D5 9F A9 41
+Block 15: 69 C3 1F F0
+Block 16: F9 EB 13 13
+Block 17: 86 13 E2 41
+Block 18: F1 71 00 00
+Blocks 19-65: 00 00 00 00
+```
+
+**Physically a tile** (attaches to the back of an R2-D2 minifig), but the brick treats it as an Identity tag (minifig character). **74 bytes of data** (blocks 0–18, block 18 partial) — the smallest tag seen so far, even smaller than Item tiles. The Identity-vs-Item classification is in the encrypted payload, not visible in cleartext.
+
 #### Raw Memory Dumps — Item Tags (Smart Tiles)
 
-**Tag 3: Lightsaber Tile** — UID `E0:16:5C:01:1B:F7:4D:57`, Content ID `0x7E`
+**Tag 6: Lightsaber Tile** — UID `E0:16:5C:01:1B:F7:4D:57`, Content ID `0x7E`
 
 ```
 Block  0: 00 7E 01 0C    Block 16: 8C B7 25 DA
@@ -142,11 +238,11 @@ Block 15: BA 97 2F 9E    Block 31: 01 94 00 00
 
 **126 bytes of data** (blocks 0–31, block 31 partial). Blocks 32–65 are all zeros.
 
-**Tag 5: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Content ID `0x7E`
+**Tag 7: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Content ID `0x7E`
 
-Data is **byte-for-byte identical** to Tag 3 (same content ID `0x7E`, same 126 bytes). See "Cloning Discovery" below.
+Data is **byte-for-byte identical** to Tag 6 (same content ID `0x7E`, same 126 bytes). See "Cloning Discovery" below.
 
-**Tag 4: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Content ID `0x6B`
+**Tag 8: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Content ID `0x6B`
 
 ```
 Block  0: 00 6B 01 0C    Block 16: DB 4A D1 13
@@ -171,14 +267,17 @@ Block 15: 3C 37 F8 DC
 
 #### Tag Comparison
 
-All four tags share the same **5-byte cleartext header** `00 XX 01 0C 01`, where byte 1 is the content ID:
+All tags share the same **5-byte cleartext header** `00 XX 01 0C 01`, where byte 1 is the content ID:
 
 ```
-             Byte 0  Byte 1  Byte 2  Byte 3  Byte 4   Payload   Blocks used
-Luke (ID):     00     9D      01      0C      01      157 bytes   0–39
-Leia (ID):     00     9E      01      0C      01      158 bytes   0–39
-Tile 1:        00     7E      01      0C      01      126 bytes   0–31
-Tile 2:        00     6B      01      0C      01      107 bytes   0–26
+               Byte 0  Byte 1  Byte 2  Byte 3  Byte 4   Payload   Blocks used
+Luke (ID):       00     9D      01      0C      01      157 bytes   0–39
+Vader (ID):      00     A9      01      0C      01     ~169 bytes   0–42
+Palpatine (ID):  00     AB      01      0C      01     ~171 bytes   0–42
+Leia (ID):       00     9E      01      0C      01      158 bytes   0–39
+R2-D2 (ID*):     00     4A      01      0C      01       74 bytes   0–18
+Lightsaber:      00     7E      01      0C      01      126 bytes   0–31
+X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 ```
 
 | Byte | Value | Meaning |
@@ -189,7 +288,7 @@ Tile 2:        00     6B      01      0C      01      107 bytes   0–26
 | 3 | `0x0C` | Fixed — format version or flags |
 | 4 | `0x01` | Fixed — unknown |
 
-**Item tags are shorter than Identity tags.** Identity tags use ~157–158 bytes across blocks 0–39; Item tiles use ~107–126 bytes across blocks 0–26/31. Both types leave blocks 32+ (or 40+) as zeros.
+**Item tags are shorter than Identity tags.** Identity tags use ~157–169 bytes across blocks 0–39 (or 0–42 for Vader); Item tiles use ~107–126 bytes across blocks 0–26/31. Both types leave remaining blocks as zeros.
 
 The two Item tiles have **different content IDs** (`0x7E` = Lightsaber, `0x6B` = X-Wing) — each tile content gets its own ID, as expected.
 
@@ -197,10 +296,13 @@ The two Item tiles have **different content IDs** (`0x7E` = Lightsaber, `0x6B` =
 
 | ID | Tag Type | Content |
 | --- | --- | --- |
+| `0x4A` | Identity (tile*) | R2-D2 — physically a tile, acts as Identity minifig |
 | `0x6B` | Item (tile) | X-Wing |
 | `0x7E` | Item (tile) | Lightsaber |
-| `0x9D` | Identity (minifig) | Pilot Luke Skywalker |
+| `0x9D` | Identity (minifig) | Luke Skywalker (Pilot Luke / Jedi Luke confirmed identical) |
 | `0x9E` | Identity (minifig) | Leia |
+| `0xA9` | Identity (minifig) | Darth Vader |
+| `0xAB` | Identity (minifig) | Emperor Palpatine |
 
 #### Encrypted Region (bytes 5+)
 
@@ -208,12 +310,12 @@ From byte 5 onward, tags with **different content IDs** are completely different
 
 #### Cloning Discovery
 
-Two physical Lightsaber tiles (Tags 3 and 5) with **different UIDs** contain **byte-for-byte identical EEPROM data**:
+Two physical Lightsaber tiles (Tags 6 and 7) with **different UIDs** contain **byte-for-byte identical EEPROM data**:
 
 | | UID | Content ID | Data |
 | --- | --- | --- | --- |
-| Tag 3 | `E0:16:5C:01:1B:F7:4D:57` | `0x7E` | 126 bytes |
-| Tag 5 | `E0:16:5C:01:1B:FE:9F:53` | `0x7E` | 126 bytes (identical) |
+| Tag 6 | `E0:16:5C:01:1B:F7:4D:57` | `0x7E` | 126 bytes |
+| Tag 7 | `E0:16:5C:01:1B:FE:9F:53` | `0x7E` | 126 bytes (identical) |
 
 This proves:
 1. **Encryption is NOT UID-diversified** — the UID plays no role in the ciphertext
