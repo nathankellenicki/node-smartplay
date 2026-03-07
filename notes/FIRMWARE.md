@@ -1047,7 +1047,11 @@ The NPM processing uses 55 float operations across its function chain, concentra
 
 ## Firmware Versions
 
-12+ versions extracted from the Bilbo backend. Debug strings are progressively stripped in later builds — earlier versions (v0.46.0) contain more source filenames than production builds (v0.72.1).
+12+ versions extracted from Unity Addressable asset bundles inside the `split_UnityDataAssetPack.apk` (102 MB) shipped with the LEGO SmartAssist app. Each firmware is embedded as a Unity SerializedFile asset identified by GUID.
+
+The Bilbo backend also has firmware download endpoints (see [BACKEND.md](../notes/BACKEND.md)). The app's update flow reads the brick's current version string from register `0x22`, then calls `GetStateFor(product, version)` with the product name (`AudioBrick`) and version (e.g. `"0.72.1"`). The backend returns the state hash for the target (newer) firmware version. The app then downloads the firmware binary using that target hash via `GetUpdateFor(stateHash)`. The brick's own `UpdateState` register (`0x88`) is not needed — the version string is sufficient.
+
+Debug strings are progressively stripped in later builds — earlier versions (v0.46.0) contain more source filenames than production builds (v0.72.1).
 
 | Version | HW | FW | Size | Notes |
 | --- | --- | --- | --- | --- |
