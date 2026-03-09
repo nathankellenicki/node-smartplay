@@ -240,7 +240,7 @@ Block 15: BA 97 2F 9E    Block 31: 01 94 00 00
 
 **Tag 7: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Content ID `0x7E`
 
-Data is **byte-for-byte identical** to Tag 6 (same content ID `0x7E`, same 126 bytes). See "Cloning Discovery" below.
+Data is **byte-for-byte identical** to Tag 6 (same content ID `0x7E`, same 126 bytes). See "UID Independence" below.
 
 **Tag 8: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Content ID `0x6B`
 
@@ -316,7 +316,7 @@ The two Item tiles have **different content IDs** (`0x7E` = Lightsaber, `0x6B` =
 
 From byte 5 onward, tags with **different content IDs** are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with AES or similar block cipher encryption.
 
-#### Cloning Discovery
+#### UID Independence
 
 Two physical Lightsaber tiles (Tags 6 and 7) with **different UIDs** contain **byte-for-byte identical EEPROM data**:
 
@@ -328,8 +328,6 @@ Two physical Lightsaber tiles (Tags 6 and 7) with **different UIDs** contain **b
 This proves:
 1. **Encryption is NOT UID-diversified** — the UID plays no role in the ciphertext
 2. **All tags of the same content type have identical EEPROM data** — it's a fixed blob per content ID
-3. **Cloning should work** — writing the raw bytes to any compatible ISO 15693 tag should produce a working clone
-4. **Custom tags are feasible** — if the encrypted format can be understood, new content blobs could potentially be crafted
 
 The ASIC does **not** use the tag UID for decryption. The encrypted data is a static per-content-ID payload programmed identically into all physical tags of that type at the factory.
 
