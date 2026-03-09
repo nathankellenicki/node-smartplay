@@ -309,9 +309,9 @@ Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=
 
 **Tag content parser** (`0x4EC58`): Parses tag data from the RAM mirror in a TLV-style format: `[type_id:2][content_length:2][payload:N]`. The 16-bit type ID encodes a 12-bit tag type (bits 0–11) and a 2-bit block type (bits 12–13: 0=header, 1=data continuation, 2=security). Allocates a buffer, copies payload, and feeds into the tag content structure at `0x80B538` / `0x80B944`.
 
-**Tag UID extraction** (`0x4FC58`): Parses ISO 15693 / NFC-V response from SPI buffer. Checks flag byte bit 0 (error) and bit 3 (format variant). Two parsing paths — standard reads bytes [7]–[12], compact reads [1]–[6]. Assembles 6 bytes into two 32-bit words via shift/or.
+**Content identity extraction** (`0x4FC58`): Extracts the 6-byte content identity from the decrypted TLV buffer. Checks flag byte: bit 0 set → return 0xFFFFFFFF:0xFFFF (invalid/no tag). Bit 3 set → compact format (bytes [1]–[6]). Neither → extended format (bytes [7]–[12]). Assembles 6 bytes into content_lo (u32) and content_hi (u16, zero-extended to u32). This is the same 6-byte identity accessible via ROM function `0xffdfd164`.
 
-**Tag scan loop** (`0x67634`): Core tag detection loop. Dequeues tag data from ring buffer, calls parser for each tag, compares against stored UID at `[0x809430]`/`[0x809434]` via XOR. Detects: same tag (no change), new tag (dispatch add), tag removed (dispatch remove). Validates against all-ones (no tag present).
+**Tag scan loop** (`0x67634`): Core tag detection loop. Dequeues tag data from ring buffer, calls `0x4FC58` to extract the 6-byte content identity, XOR-compares against stored identity at `[0x809430]`/`[0x809434]`. Detects: same tag (no change), new tag (dispatch add → triggers `0x4F938`), tag removed (dispatch remove). All-ones identity = no tag present.
 
 **Manufacturer dispatch** (`0x5C96C` / `0x63B20`): After tag data is parsed, reads IC manufacturer code from `0x80B944+0x8` and branches by manufacturer: 0x07 (TI, r14=0), 0x0D (ST, IC ref check), 0x16 (EM Micro, r14=2), 0x17 (TI new, r14=1). The type index r14 selects handler functions from a 2D dispatch table at ROM `0x37CF00`, indexed as `ROM[r0*32 + r14*4 + 0x37CF00]`. A secondary byte table at `0x37CFA0` returns per-manufacturer configuration values — EM(16) consistently returns 54, TI returns varying values (88–204). TI and EM paths use different handler functions throughout.
 
@@ -333,13 +333,88 @@ Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=
 
 **FNV-1a content hashing** (`0x4E9B8`): Init `0x811C9DC5`, per byte XOR then multiply `0x01000193`. Used for fast content signature comparison.
 
-**Tag validation bridge** (`0x51058`): Validates tag data struct (checks `0xDEADDD00` magic), then calls the event dispatch at `0x66BF8`. Also called for tag-removed (NULL) case.
+#### Stream 1: Content Identity (6 bytes + type_byte → script selection)
 
-**Tag event dispatch** (`0x66BF8`): Reads event type from tag struct offset 4, dispatches via 8-case jump table. Identity tags (type 1/5) → `0x508C8` with magic `0xA7E24ED1`. Item tags (type 2) → first calls `0x47A10` (item-specific lookup), then `0x5095C` with magic `0x0BBDA113` and extended params from offsets 8–20. Content type 3 → `0x50C08` with `0x812312DC`. Distributed/type 4 → `0x50C08` with `0x814A0D84`. Status/type 6 → `0x50B88` with `0xE3B77171`.
+The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bit value that identifies the content experience. The firmware treats this as an **opaque identifier** — no sub-field extraction (no AND-masks, shifts, or modular arithmetic on the bytes). It is used for equality comparison, XOR hashing, and wildcard detection. Two parallel extraction paths exist:
 
-**Play event message builders** (`0x508C8`, `0x5095C`, `0x50C08`, `0x50B88`): Check play engine readiness (`0x80D968`), look up event handler via `0x50FDC` (matches current tag UID against `0x809430`), serialize message with opcode + params, enqueue to play engine event ring buffer via `0x51094`.
+**ROM content identity reader** (`0x13E48`): Calls EM9305 mask ROM function at `0xffdfd164`, which returns a pointer to 6 bytes populated by the ASIC after tag decryption. Assembles into content_lo (u32 LE from bytes[0..3]) and content_hi (u16 LE from bytes[4..5], zero-extended). Called from 9 sites including boot init (`0x27A90`), play engine init (`0x4F93C`), BLE notification builder (`0x118F8`), content hash computation (`0x1A4D8`), and TLV entry handler (`0xEC16`).
 
-**PPL preset resolver** (`0x66A48` / `0x66AC0`): Manages content sequencing from state at `0x80C6C0` (364 bytes). Tracks identity, item, and other event counts separately. Sums all three against a total threshold — when reached, triggers content completion via `0x22D14`. Compares tag content signature at `0x80C808` (audio bank, content class, variant, type, position) against current content to decide continue vs switch.
+**TLV content identity extraction** (`0x4FC58`): Extracts the same 6 bytes directly from the TLV buffer. Two format variants (bit 3 of flag byte): compact reads bytes [1]–[6], extended reads bytes [7]–[12]. Produces the same content_lo/content_hi pair.
+
+**TLV type 0x22 handler** (`0xED74`): Reads a **7-byte record** from decrypted TLV data: `{content_lo(u32), content_hi(u16), type_byte(u8)}`. The **type_byte** (7th byte) is separate from the 6-byte identity — it becomes byte 0 of the PPL event node and serves as the **PPL event subtype** that play.bin scripts match against. Calls `0x6BE40` with event hash `0x4E58710B`, event type ID `0x3B` (59), the 7-byte record, and the old content identity from `0x809430`.
+
+**Tag-change handler** (`0x4F938`): Called when the scan loop detects a new tag. Calls `0x13E48` → `0x4FF58` to update `0x809430`. Also calls `0x4FDA8` (clears cached identity at `0x80D93C`) and sets up 5000ms timers at `0x80EB8C`/`0x80EB90`.
+
+**Content identity writer** (`0x4FF58`): Writes content_lo to `[0x809430]` and content_hi to `[0x809434]`. Called from boot init (`0x27A98`) and tag-change handler (`0x4F950`).
+
+**Content identity register** (`0x809430`): Stores the current content identity — content_lo (u32) at +0, content_hi (u32) at +4. Written by `0x4FF58` during boot and on tag change. Read by all subsequent event builders (timer at `0x50A20`, button at `0x50A94`, content resolver at `0x50FDC`, scan loop at `0x67634`) — this is how a tag scan establishes the content context for all interaction modes.
+
+**PPL XOR key** (`0x80CF28`): The PPL state struct init at `0x12134` computes `content_lo ^ content_hi` and stores it as the first field of the PPL struct at `0x80CF28`. This 32-bit hash key is used by the PPL system for content routing. The init also registers 11 PPL handler entries with IDs {0x48, 0x4C, 0x49, 0x4B, 0x06, 0x05, 0x07, 0x01, 0x02, 0x04, 0x08, 0x47} and ROFS table pointers.
+
+**Decrypted tag content block** (`0x807A60`): 24-byte region storing the full decrypted tag content output (NOT just an FNV hash). Written by `0x1A4C4` → `0x1A516`. Read by BLE register responses (`0x17922`), BLE advertisements (`0x1827A`), tag state notifications (`0x694EC`), and tag scan processing (`0x69B0E`). Zeroed on tag removal (`0x182AE`).
+
+**FNV-1a hashing**: Six FNV-1a hash sites exist in the firmware (init `0x811C9DC5`, multiply `0x01000193`):
+- `0x0F114`: 4-byte hash of ASIC register data at `0x801400` → stored at `0x80942C`
+- `0x10C5C`: 6-byte hash of content identity at boot → passed to init functions
+- `0x1D270`: Generic 8-byte FNV utility
+- `0x34928`: Variable-length FNV used by play.bin bytecode interpreter
+- `0x4E9AC`: **Play engine bytecode FNV opcode** — scripts can compute FNV-1a hashes at runtime for content matching within play.bin
+
+**How the 6-byte identity participates in script selection:**
+
+The content identity flows into the PPL system through multiple paths — it is NOT merely a change-detection fingerprint:
+
+1. **PPL XOR key**: content_lo ^ content_hi stored at `0x80CF28+0` as the PPL state struct's primary key for content routing
+2. **Pool entry matching**: `0x4F97C` writes the 6-byte identity into 19-byte pool entries. The match score (`preset_type << 4 + bonus`: exact=+10, wildcard=+3, mismatch=+2) affects which pool entry wins, influencing the script offset
+3. **Script executor**: `0x4F7B4` walks a linked list of pool entries (which contain the identity), accumulates sizes, and selects the script at the target offset
+4. **Event dispatchers**: `0x505A4`, `0x505F0`, etc. call `0x6CEC8` to validate play.bin context at `[0x80D948]`, then call `0x50FDC` with the content identity and preset type
+
+The **actual matching logic** — where the content identity or XOR key is compared against PPL preset table params to find the specific script — happens in ROFS-mapped play engine code (memory-mapped from play.bin), which is not visible in the firmware disassembly. The event category hashes passed in r2 (e.g., `0xC47A2B46` for NPM, `0x4E58710B` for tag identity, `0x0BBDA113` for items) identify the event type, not the tag content.
+
+#### Stream 2: Resource References (4 × u16 → bank selection)
+
+A separate TLV record carries resource references for audio and animation banks.
+
+**Tag TLV dispatch** (`0x523E4`): After TLV parsing at `0x4EC58`, dispatches by TLV type field. Type 4 → Identity tag handler chain (`0x47BE8` → callback at `0x5241C`). Type 6 → Item tag handler (`0x4D6B8` → vtable dispatch via `0x801B10` → `0x4D8E4`). Both paths extract 4 × u16 resource reference values from TLV sub-type `0x0008` at `0x52454`.
+
+**Resource reference extraction** (`0x52454`): Reads TLV record with tag byte `0x12` and sub-type `0x0008` (data length = 8 bytes = 4 u16). Range checks use subtract-then-wrap pattern with constant `-3201` (`0xFFFFF37F`):
+- value0 (+0x0C): Content ref start (range 6–3200)
+- value1 (+0x0E): Content ref end (range value0–3200)
+- value2 (+0x10): Bank index (range 0–499)
+- value3 (+0x12): Bank reference (range 10–3200)
+
+Packed into 12-byte struct `{u16, u16, u16, u16, u32(=0)}` and dispatched via opcode `0x72` through `0x16B84`. The 3200 limit is a system-wide constant also used as a default config value at `0x807ACC`.
+
+**Opcode 0x72 dispatch** (`0x16B84`): Validates play session via `0x4C1D0`, builds a message with the struct pointer and dispatches to `0x4C630` (play engine message queue). The struct pointer is stored by reference — the data is not copied. The play engine processes opcode 0x72 as event category 0xa.
+
+**Slot table population** (`0x16C80`): Writes audio_bank (u16 at +0) and anim_bank (u16 at +2) to `0x80931C + slot*8`. Called from the message handler chain. Slot index clamped to < 2 (assert at line 0x90). Default values via `0x4D7D4`: audio_bank=0x0640 (1600), anim_bank=0x0780 (1920).
+
+**Slot table layout** at `0x80931C` (8 bytes/entry, 2 slots):
+
+| Offset | Size | Field |
+| --- | --- | --- |
+| +0 | u16 | audio_bank |
+| +2 | u16 | anim_bank |
+| +4 | u8 | presence/activation flag |
+| +5 | u8 | (unused) |
+| +6 | u8 | status byte (set to 3 on removal by `0x4D784`) |
+| +7 | u8 | secondary data present flag (from `0x16D68`) |
+
+**Secondary slot data** at `0x80932C` (5 bytes/entry, 2 slots): Written by `0x16D68` from a data table at `[0x80DA10]`. Sets the secondary presence flag at slot+7.
+
+**Item event builder** (`0x4D8E4`): Reads slot+7 to check for secondary data. If present → reads both primary (audio_bank, anim_bank) and all 5 secondary bytes, calls extended dispatch `0x1D798`. If absent → falls back to simple handler `0x4D6FC` which reads only audio_bank and anim_bank, calls `0x1D76C`.
+
+**Item descriptor table** (`0x47A10` → `0x378484`): 9-entry pointer table in firmware const data. Indexes by item type (0–8, clamped): `if r0 >= 9 → return default (0x377F66); else → return *(0x378484 + r0 * 4)`. Used downstream in play engine execution (NOT during TLV parsing).
+
+#### Event Builders and Content Resolution
+
+**Play event message builders** (`0x50A20`, `0x50A94`): Non-tag event builders that check play engine readiness (`0x80D968`) and call content resolver `0x50FDC`. Each hardcodes a preset type in r3: `0x50A20` passes `0x0E` (Timer/idle), `0x50A94` passes `0x10` (Button/shake). After resolving, serialize message with opcode + params, enqueue to play engine event ring buffer via `0x51094`.
+
+**PPL search** (`0x4F97C`): Buffer allocator and content encoder — NOT a PPL table iterator. Computes score `(preset_type << 4) + match_bonus`: +3 if wildcard (all 0xFFFF), +10 if content identity exactly matches previous (XOR == 0), +2 if mismatch. Score bit 0 determines entry size: odd → 13 bytes (wildcard, no identity stored), even → 19 bytes (stores full content identity). Calls `0x4FB20` → `0x4FD50` for pool allocation. The actual PPL preset table matching happens downstream in the play engine (ROFS-mapped code).
+
+**Crash/fault dispatch** (`0x66BF8`): **NOT tag event dispatch** — this is the crash reporting system. Reads error category from fault struct offset 4, dispatches via 8-case jump table to error notification handlers (`0x508C8`, `0x5095C`, `0x50C08`, `0x50B88`). The fault struct at `0x80F470` uses magic `0xDEADDD00`. AUX registers 1024 (ECR), 1027 (ERSTATUS), 1028 (ERET) stored by crash handlers are standard ARC CPU exception registers, not tag data.
+
+**PPL preset resolver** (`0x66A48` / `0x66AC0`): Manages content sequencing from state at `0x80C6C0` (364 bytes). Tracks identity, item, and other event counts separately. Sums all three against a total threshold — when reached, triggers content completion via `0x22D14`. Compares tag content signature at `0x80C808` against current content to decide continue vs switch.
 
 **Content resolution** (`0x40F88`): Resolves ROFS content pointer — maps content reference from tag data to actual data in `play.bin`/`audio.bin`/`animation.bin`.
 
@@ -349,7 +424,14 @@ Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=
 
 **Tag removal handler** (`0x66CD0`): On tag removal, checks elapsed time against 20-tick threshold (~320ms grace period). If within grace window, does nothing (tag may return). After grace period, flushes play buffers via `0x37C08` and stops play engine via `0x6F848`.
 
-**Tag event dispatch** (`0x66BF8`): 8-case jump table triggered when a tag is detected and identified. Cases route to content loading — loads audio, looks up tag type via `0x47A10`, triggers play content from ROFS `play.bin`. Content type determines play mode (single-brick or multi-brick PAwR).
+**Content signature** (`0x80C808`): Written at `0x24624` from tag TLV data via event structs. Fields:
+- `audio_bank` — from slot table → event struct byte[+3]
+- `class` — from event struct byte[+4]
+- `variant` — from event struct byte[+2]
+- `type` — derived from event struct byte[+5]: 1→1, 2→2, 3→3, 4→3
+- `position` — derived from type: 0, 1, or 2
+
+Used by PPL resolver at `0x66A48` to compare against current content to decide continue vs switch.
 
 **Magnetics timer scheduling** (`0x3B858`): Periodic timer for tag slot scheduling. Reads ASIC timer counter via `0x32304`, computes next trigger time. Interrupt channel registration at `0x808854` for channels 4–5.
 
@@ -640,23 +722,25 @@ The PPL (Play Preset Library) file contains all play scripts as flat linearized 
 
 #### Preset Table (offset 0x10)
 
-61 entries of 8 bytes each: `[type:4][value:4]`. The first 3 entries are preamble/default script references (type=0x0B, values=[80, 64, 96]). The remaining 58 entries map 1:1 to the 58 scripts. The `value` field is a **selection weight** for weighted random script selection within each preset type group.
+61 entries of 8 bytes each: `[type:4][param:4]`. The first 3 entries are preamble/default script references (type=0x0B, values=[80, 64, 96]). The remaining 58 entries map 1:1 to the 58 scripts. The `param` field appears to encode `[content_id:8 (bits 11:4)][slot:4 (bits 3:0)]` — content IDs shared across preset groups link scripts for the same content across interaction modes (e.g., 6 params shared between type 0x03 and type 0x09). The exact matching mechanism between the tag's 48-bit content identity and these param values happens in ROFS-mapped play engine code (not fully traced). Script selection at the preset level is **deterministic** — but a **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5) seeded by content_lo ^ content_hi generates variation within scripts (see Event Dispatch Table section below).
 
-Six distinct type IDs group content by category:
+Six distinct type IDs group content by **interaction mode** — not by tag hardware type:
 
-| Type | Count | Script Indices | Description | Header Flag |
+| Type | Count | Script Indices | Trigger Category | Header Flag |
 | --- | --- | --- | --- | --- |
-| 0x03 | 16 | #0–#15 | Identity tag (minifig) play content (1 PAwR-capable: script 14) | 0x00 |
-| 0x06 | 5 | #16–#20 | Item tag (tile) play content | 0x00/0x50 |
+| 0x03 | 16 | #0–#15 | Content group A — currently used by minifig tags (1 PAwR-capable: script 14) | 0x00 |
+| 0x06 | 5 | #16–#20 | Content group B — currently used by tile tags | 0x00/0x50 |
 | **0x09** | **11** | **#21–#31** | **NPM/proximity reactions** — short reactive scripts triggered by brick-to-brick positioning events | **0x40** |
 | 0x0B | 3 | #32–#34 | System/default scripts (startup, transitions) | 0x40 |
 | 0x0E | 16 | #35–#50 | Timer/idle ambient play sequences (1 PAwR-capable: script 42) | 0x00/0x50 |
 | 0x10 | 7 | #51–#57 | Button/shake responses (1 PAwR-capable: script 54) | 0x50 |
 
+**Note:** Types 0x03 and 0x06 are labelled "Identity" and "Item" in some earlier notes, but this is misleading. The preset type is an **interaction mode slot**, not a tag hardware type. Tag scan (0x03/0x06) establishes content identity at `0x809430`. Timer/idle (0x0E) handles ongoing gameplay. Button/shake (0x10) handles physical interaction. NPM (0x09) handles proximity. System (0x0B) is default. For tag-triggered events, the preset type comes from the tag's encrypted content data — the firmware computes it from the tag payload via a ROM function call. A tile tag could theoretically carry content type 0x03 if programmed that way. For non-tag events, the firmware hardcodes the preset type: timer events → 0x0E, button/shake → 0x10.
+
 **Type 0x09 (NPM/proximity)** scripts are structurally distinct from all other types:
 - All 11 have the unique header flag byte `0x40` at script header position 11 (only shared with system type 0x0B)
 - 10 of 11 are exactly 101 bytes (the 11th is 111 bytes) — the same template with different audio/animation references
-- Selection weights are evenly distributed (6.5–12.1%), meaning roughly equal probability when a proximity event fires
+- The `param` values for these scripts are relatively uniform but their purpose is unknown
 - These scripts define short reactive behaviours (sounds, LED flashes) that play when another brick is detected nearby
 
 #### Script Directory (offset 0x1F8)
@@ -721,16 +805,99 @@ Byte values that map to values > 25 in the translation table are operand data co
 
 #### Content Indexing from Smart Tags
 
-The play event handler at `0x52588` maps tag RFID data to scripts:
+The ASIC-decrypted tag payload produces **two separate data streams**:
 
-| Tag Data Offset | Field | Maps To |
+**Stream 1 — Content Identity (6 bytes + type_byte → script selection):**
+
+A 6-byte opaque content identity extracted via ROM function `0xffdfd164` (or TLV buffer at `0x4FC58`). Packed into content_lo (u32) + content_hi (u16). Plus a **type_byte** (7th byte from TLV type 0x22 handler at `0xED74`) that serves as the PPL event subtype — byte 0 of the PPL event node that scripts match against.
+
+The identity flows into the PPL system: XOR key (content_lo ^ content_hi) at `0x80CF28` as the PPL routing key, pool entry match scoring (exact=+10, wildcard=+3, mismatch=+2) affecting script offset selection, and pool entries carrying the identity through the script executor at `0x4F7B4`. The scan loop at `0x67634` XOR-compares against `[0x809430]` for change detection. The actual matching between the content identity and PPL preset table entries happens in ROFS-mapped play engine code (not visible in firmware disassembly).
+
+**Stream 2 — Resource References (4 × u16 → bank selection):**
+
+A separate TLV record (sub-type `0x0008`, tag byte `0x12`, data length 8):
+
+```
++0x00..+0x07  TLV header (type ID, length, etc.)
++0x08         Tag byte (must be 0x12)
++0x09         Session counter
++0x0A..+0x0B  Sub-type u16 LE (must be 0x0008)
++0x0C..+0x0D  value0: Content ref start (u16 LE, range 6–3200)
++0x0E..+0x0F  value1: Content ref end (u16 LE, range value0–3200)
++0x10..+0x11  value2: Bank index (u16 LE, range 0–499)
++0x12..+0x13  value3: Bank reference (u16 LE, range 10–3200)
+```
+
+Extracted at `0x52454`, dispatched via opcode `0x72` (`0x16B84`) through the message queue. The handler chain populates the slot table at `0x80931C` with audio and animation bank IDs, read back by item handler `0x4D6FC`/`0x4D8E4`.
+
+**Script selection** uses the content identity + type_byte (Stream 1), not the 4 u16 resource references. The content identity flows through the PPL system (XOR key at `0x80CF28`, pool entries, match scoring), while the type_byte routes to specific scripts as the event subtype. The 4 u16 values (Stream 2) select which audio/animation banks those scripts use. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), button/shake → 0x10 (`0x50A94`). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
+
+Script selection at the preset level is **deterministic** — the content identity + type_byte always maps to the same script. However, a **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **below** the script selection level — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play within the selected script.
+
+#### Event Dispatch Table (0x37D5A4)
+
+A **38-entry dispatch table** at ROM address `0x37D5A4` (7 bytes/entry, 266 bytes total) drives the play engine's event routing. The dispatch function at `0x18644` processes events from a 2-entry circular ring buffer in the PPL state struct at `0x80CF28`.
+
+**PPL State Struct** at `0x80CF28`:
+
+| Offset | Size | Field |
 | --- | --- | --- |
-| +8 | Tag type | 1 = Identity (minifig), 0x13 = Item (tile) |
-| +9 | Content type | Validated against preset table types |
-| +10, +11 | Content index (uint16 LE) | Selects preset (added by 4) |
-| +12, +13 | Variant ID (uint16 LE) | Selects script block within preset |
+| +0x00 | 4 | XOR key (content_lo ^ content_hi) — also xorshift32 PRNG state |
+| +0x04 | 1 | type_A (primary content type) |
+| +0x05 | 1 | type_B (secondary content type) |
+| +0x08 | 2 | Event ring buffer (2-entry circular) |
+| +0x0C | 1 | Ring buffer read pointer |
+| +0x0D | 1 | Ring buffer write pointer |
+| +0x13 | 1 | Condition flags byte 1 |
+| +0x14 | 1 | Condition flags byte 2 |
+| +0x15 | 1 | Condition flags byte 3 |
 
-Identity tags (minifigs) force variant = 1 (always the same script). Item tags use the full variant ID to select from multiple possible scripts within the chosen preset.
+**7-byte entry format:**
+
+| Byte | Field | Description |
+| --- | --- | --- |
+| [0] | type_A_filter | Primary content type to match (0 = wildcard) |
+| [1] | type_B_filter | Secondary type filter (0 = wildcard path, nonzero = strict match both) |
+| [2] | event_type | Must exactly match event from ring buffer |
+| [3] | target_type / ref_low | Target content type for post-match; also low byte of 16-bit ref |
+| [4] | ref_high | High byte of 16-bit reference: `(entry[4] << 8) \| entry[3]` |
+| [5] | script_index | Passed directly to `set_script()` at `0x1ED4` (range 0–32) |
+| [6] | condition_code | Index into condition evaluator jump table at `0x1BE90` (18 cases, 0 = disabled) |
+
+**Matching algorithm** (at `0x1867C`, loop counter r12 = 0x26 = 38):
+1. Read event from ring buffer (masked `& 0x1`)
+2. For each of 38 entries (stride 7: `mpy r17,r8,0x7`):
+   - entry[2] must match event_type exactly
+   - If entry[1] != 0: strict path — both entry[0] == type_A AND entry[1] == type_B required
+   - If entry[1] == 0 AND entry[0] == 0: full wildcard (matches any type)
+   - If entry[1] == 0 AND entry[0] != 0: match type_A directly, or hierarchy walk (dead code in v0.72.1)
+3. On match: evaluate condition via jump table at `0x1BE90` using entry[6]
+4. On condition pass: call `set_script(entry[5])` at `0x1ED4`, optionally update type_A/type_B
+
+**Condition evaluator** (`0x1BE90`): 18-case `bih` jump table evaluating PPL state flags:
+- 0: always disabled
+- 1: `(state[+0x13] & 0x02) >> 1`
+- 2: sign bit of state[+0x14]
+- 4: `(state[+0x13] & 0x82) == 0x82`
+- 5: `!(state[+0x13] & 0x78)` (bits 3–6 clear)
+- 7: `(state[+0x13] & 0x01)`
+- 8: `(state[+0x15] & 0x02) == 0`
+
+**Post-match processing** (`0x186CE`–`0x18770`): If `ref16 = (entry[4] << 8) | entry[3]` >= 256, calls `content_lookup()` at `0x24F90` to resolve against a **19-entry content lookup table** at `0x37D4C4` (4 bytes/entry: `[typeA][typeB][byte2][byte3]`). Result updates type_A/type_B in the state struct.
+
+**xorshift32 PRNG** (`0x1E5D2`): Mutates the XOR key in-place at `0x80CF28+0` using shifts 13, 17, 5. Generates 3 random bytes dispatched as events (handler ID `0x0F`, type 4). This introduces per-playback variation in audio clip and LED pattern selection **within** the selected script.
+
+**Dead code in v0.72.1:** The hierarchy walk (at `0x186AE`–`0x186BA`) references a table at `0x37D464`, but this address is occupied by BLE GATT attribute definitions in v0.72.1 — the walk always terminates immediately. A secondary table at `0x37D42C` (14 entries, stride 4) is similarly overlapped by BLE data. Both were likely designed for a richer content type tree in earlier firmware or future versions.
+
+#### play.bin Header Validation (0x34530)
+
+At `0x34530`, the firmware validates the play.bin header loaded from ROFS:
+1. Checks magic `0x7F PPL` (bytes `7F 50 50 4C`)
+2. Validates `num_preset_types == 5` (must be exactly 5)
+3. Reads `num_scripts` from header offset 10
+4. Copies header fields into PPL runtime state
+
+This confirms the PPL format is tightly coupled to the firmware — a play.bin with a different number of preset types would be rejected.
 
 #### NPM Event → Script Routing
 
@@ -758,9 +925,9 @@ Only 4 of 58 scripts use distributed execute (handler 21 / PAwR messaging):
 | 42 | 0x0E | 1,564 | 6 | 9 | 17 | 71 |
 | 54 | 0x10 | — | — | — | — | — |
 
-Script 42 is the largest and most complex script in the file, and the only type-0x0E (Item tag) script with PAwR capability. See [HARDWARE.md](HARDWARE.md) for the inferred X-Wing tag case study.
+Script 42 is the largest and most complex script in the file, and the only type-0x0E (Timer/idle) script with PAwR capability. See [HARDWARE.md](HARDWARE.md) for the inferred X-Wing tag case study.
 
-#### Type-0x0E Script Comparison (Item Tags)
+#### Type-0x0E Script Comparison (Timer/Idle)
 
 | Script | Size | Branches | dist_exec | Range Checks | If-Then-Else | Table Lookups |
 | --- | --- | --- | --- | --- | --- | --- |

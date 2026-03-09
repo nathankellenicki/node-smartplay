@@ -292,7 +292,7 @@ X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 
 1. **The EM9305 firmware never sees the cleartext header.** The ASIC reads raw EEPROM, decrypts it, and sends a restructured response over SPI. The firmware contains zero references to any known content ID value (`0x9D`, `0xA9`, etc.) or header constants (`0x0C`).
 2. **The companion app has no NFC functionality.** The SmartAssist app communicates with the brick over BLE only — it never reads tags directly via phone NFC. No tag content ID parsing exists in the IL2CPP dump.
-3. **The cleartext content ID is consumed solely by the ASIC silicon.** It likely selects the decryption key/route, but the ASIC's internal logic is opaque. The actual content identity used by the play engine comes from the **decrypted payload** as a 32-bit content reference (offset 8 of the tag event struct).
+3. **The cleartext content ID is consumed solely by the ASIC silicon.** It likely selects the decryption key/route, but the ASIC's internal logic is opaque. The actual content identity used by the play engine comes from the **decrypted payload** as a 6-byte opaque identity (via ROM function `0xffdfd164` or TLV extraction at `0x4FC58`), plus a type_byte from TLV type 0x22.
 
 The cleartext header may exist for future use cases (e.g., phone-based tag identification without decryption) or may be purely an ASIC-internal routing mechanism.
 
@@ -337,7 +337,14 @@ The ASIC does **not** use the tag UID for decryption. The encrypted data is a st
 
 LEGO's tag security operates at **two layers**:
 
-1. **EM9305 ↔ ASIC authentication** (AES-128 + ECC): The EM9305 firmware derives a 16-byte key from ROFS config data + hardware OTP, written to ASIC register `0xF04084`. This authenticates the EM9305 to the ASIC — prevents rogue processors from using the ASIC. Per-brick unique (hardware OTP dependent).
+1. **EM9305 ↔ ASIC authentication**: During ASIC init (called from `0x2A22C`), the firmware checks a flag byte in the config struct at `0x80DCF6+0x13`. If authentication is enabled, it:
+   - Reads a mode byte (`0x80DCF6+0x15`) to determine the auth variant (mode 2 sets bit 7 = ECC)
+   - Builds a control byte from the mode flag (bit 7) OR'd with a 7-bit config mask from `0x80DCF6+0x18`
+   - Writes this control byte to the ASIC at the key data offset
+   - Calls `0x33C7C` which copies **16 bytes** from the config struct (`0x80DCE4+0x26`) to ASIC register `0xF04084`, one byte at a time in a tight loop (lp_count=0x10)
+   - Calls `0x33C60` which copies **5 bytes** (in reverse order) to ASIC register `0xF040A2` — likely a secondary auth parameter or ECC public key fragment
+
+   The 16-byte key and 5-byte parameter reside in the config struct at `0x80DCC8` which is populated from ROFS config data during boot. The claim that hardware OTP is involved is plausible (the key may be per-brick unique) but not directly confirmed from disassembly alone — it's possible the key is static across bricks if sourced only from ROFS. The purpose is to authenticate the EM9305 to the ASIC, preventing a rogue processor from commanding the ASIC's tag reader and decryption engine.
 
 2. **Tag data encryption** (algorithm unknown, in ASIC silicon): Raw EEPROM content is encrypted. The ASIC decrypts it after reading, before passing to the EM9305. The decryption key is in the ASIC's internal logic — not accessible from the EM9305 firmware or via JTAG. All bricks share the same decryption capability (tags work on any brick).
 
@@ -403,7 +410,7 @@ After validation, the firmware reads content from the parsed tag event struct:
 | 16 | 4 bytes | Extended data (item tags, content types 3/4) |
 | 20 | 4 bytes | Extended data (item tags only) |
 
-Identity tags (minifigs) carry a simple 32-bit content reference at offset 8. Item tags (tiles) carry significantly more data across offsets 8–20, specifying audio bank, content class, variant, and type.
+Identity tags (minifigs) and item tags (tiles) both carry encrypted data that the ASIC decrypts into two streams: a 6-byte content identity (48-bit key for script selection) and TLV resource references (4 × u16 for audio/animation bank selection). The struct offsets 8–20 listed above are from the pre-decryption event struct format — the actual content data is in TLV records after ASIC decryption.
 
 ### Tag Event Types
 
@@ -634,7 +641,7 @@ This parser feeds into the tag content structure at `0x80B944`, which is the con
 
 #### No CRC in Firmware
 
-The EM9305 firmware contains **no CRC-16 or CRC-32 calculation** for tag data (confirmed by exhaustive search — no CRC constants or functions found). ISO 15693 CRC-16 is handled entirely by the ASIC hardware. The `0xDEADDD00` value found in the code is an event-struct validity sentinel, not a data integrity check.
+The EM9305 firmware contains **no CRC-16 or CRC-32 calculation** for tag data (confirmed by exhaustive search — no CRC constants or functions found). ISO 15693 CRC-16 is handled entirely by the ASIC hardware. The `0xDEADDD00` value found in the code is the **crash/fault reporting magic** (stored at `0x80F470` by the assert handler at `0x3B1D4`), not a tag data sentinel or integrity check.
 
 ### Tag IC Identification: Custom EM Microelectronic Die
 
@@ -702,13 +709,13 @@ The firmware is a **generic play engine** — it doesn't know what an X-Wing, a 
 - **Sensor reading** (accelerometer, light/color, sound)
 - **PAwR messaging** for inter-brick communication
 
-All specific behaviour lives in the **ROFS content files** (`play.bin`, `audio.bin`, `animation.bin`), not in the firmware code. The tag is a **parameterized content selector** — its content fields (audio bank, class, variant, type) index into `play.bin` to select which script runs. The firmware resolves the tag's content reference to a specific script node, then the semantic tree executor runs that script reactively against sensor input.
+All specific behaviour lives in the **ROFS content files** (`play.bin`, `audio.bin`, `animation.bin`), not in the firmware code. The tag carries two separate data streams after ASIC decryption: a **48-bit content identity** (6 bytes) that selects scripts via the PPL preset table, and **4 u16 resource references** that select audio/animation banks. The firmware resolves the content identity to matching script nodes, then the semantic tree executor runs those scripts reactively against sensor input.
 
 ```
-Smart Tag (content selector)
-  ↓ content class + variant → selects script from play.bin
-  ↓ audio bank             → selects sounds from audio.bin
-  ↓ animation bank         → selects LED patterns from animation.bin
+Smart Tag (encrypted payload)
+  ↓ ASIC decrypts
+  ↓ Stream 1: 6-byte content identity → PPL search → selects scripts from play.bin
+  ↓ Stream 2: 4 × u16 resource refs   → slot table → selects banks from audio.bin / animation.bin
 ROFS content
   ↓ script = reactive logic (sensor conditions, branching, PAwR, state machines)
   ↓ audio  = synthesizer instructions for ASIC
@@ -718,7 +725,7 @@ Firmware engine (generic)
 Hardware (ASIC speaker, LEDs, PAwR radio)
 ```
 
-Different tags can share the same script but reference different audio and animation banks, producing different sounds and LED patterns with identical gameplay behaviour.
+Different tags can share the same content identity (same scripts) but carry different resource references (different audio/animation banks), producing different sounds and LED patterns with identical gameplay behaviour.
 
 ### Execution Pipeline
 
@@ -787,7 +794,7 @@ The PPL state machine manages content sequencing and completion. State at `0x80C
 | Item count | 0x08 | Number of item (tile) tag events received |
 | Other count | 0x0A | Number of other events received |
 
-A preset can require a **mix of identity and item tags** to complete — all three counts are summed against the total. The content signature at `0x80C808` (audio bank, content class, variant, type, position) determines whether a new tag matches the current preset or triggers a content switch.
+A preset can require a **mix of identity and item tags** to complete — all three counts are summed against the total. The content signature at `0x80C808` (written at `0x24624` from tag TLV data) determines whether a new tag matches the current preset or triggers a content switch.
 
 ### Play State Machine
 
@@ -894,23 +901,51 @@ All three binary files use an ELF-inspired magic: `0x7F` followed by a 3-charact
 
 The firmware is a **generic engine**. All specific play behaviour (X-Wing swooshes, laser sounds, hit counting, explosion sequences) is encoded in `play.bin` as reactive scripts. The firmware provides the execution machinery (synthesizer, semantic tree executor, PPL, sensor reading, PAwR messaging) but has no knowledge of specific play experiences. The `audio.bin` clips are not PCM recordings — they are **synthesizer instruction sequences** for the ASIC's analog synthesizer, meaning all audio is generated procedurally.
 
-Content is **not indexed by tag ID**. Tags carry their own content references (audio bank, class, variant, type) which the firmware uses to look up entries in the ROFS files. Two tags with the same content fields behave identically regardless of UID. The PPL resolver compares tag content signatures (via FNV-1a hashing) to decide whether to continue the current preset or switch content.
+Content is **not indexed by tag UID**. Tags carry their own content identity and resource references which the firmware uses to select scripts and look up entries in the ROFS files. Two tags with the same content fields behave identically regardless of UID. The PPL resolver compares tag content signatures (via FNV-1a hashing) to decide whether to continue the current preset or switch content.
 
 ### Content Indexing
 
-A Smart Tag's RFID data selects three independent assets from the ROFS:
+The ASIC-decrypted tag payload produces **two separate data streams**:
 
-| Tag Field | Offsets | Selects | From |
-| --- | --- | --- | --- |
-| Content index + variant ID | 10–13 | **Script** (behavioral logic) | `play.bin` — 1 of 58 script blocks via preset table |
-| Audio bank | 8 | **Sounds** (synthesizer instructions) | `audio.bin` — 1 of 3 audio banks, 154 clips |
-| Animation bank | 8 | **LED patterns** (timing + intensity) | `animation.bin` — 1 of 9 animation banks, 135 clips |
+#### Stream 1 — Content Identity (6 bytes + type_byte → script selection)
 
-The content index (offsets 10–11, uint16) selects 1 of 5 presets, and the variant ID (offsets 12–13, uint16) selects a script block within that preset. Identity tags (minifigs) always use variant 1. Item tags (tiles) use the full variant ID for multiple script variations.
+Each tag carries a **6-byte content identity** (48-bit opaque value) plus a **type_byte** (1 byte). After ASIC decryption, these are accessible via EM9305 ROM function `0xffdfd164` (6 bytes) or extracted from the TLV buffer by `0x4FC58`. The 6 bytes are packed into content_lo (u32 LE) + content_hi (u16 LE). The type_byte is the 7th byte from a separate TLV type 0x22 record.
 
-Because the three selections are independent, different tags can share identical gameplay behaviour while having completely different sounds and LED patterns.
+The firmware treats the 6 bytes as **opaque** — no sub-field extraction ever occurs (no masks, shifts, or modular arithmetic). The firmware only:
+- XOR-compares for equality (same tag vs different tag, in scan loop at `0x67634`)
+- XORs content_lo ^ content_hi for a 32-bit hash key (stored at `0x80CF28` as the PPL state struct's primary routing key)
+- Checks for the wildcard value (all 0xFF = no tag)
+- Writes into pool entries (19 bytes) for the PPL matching system
+- Serializes byte-by-byte for BLE notifications
 
-**NPM/proximity scripts (type 0x09) are not selected by tags** — they are triggered by the firmware's NPM event system when another brick is detected nearby. The firmware maps NPM events to type 0x09 and randomly selects one of the 11 proximity scripts using their selection weights.
+The **type_byte** is the PPL event subtype — it becomes byte 0 of the PPL event node, which play.bin scripts match against. This is the value that routes to specific scripts within a preset group.
+
+The content identity participates in script selection through the PPL system: the XOR key at `0x80CF28` is the PPL state struct's primary key, pool entry match scoring (exact=+10, wildcard=+3, mismatch=+2) affects priority, and the script executor walks pool entries to select scripts. However, the **actual matching logic** between the content identity and PPL preset table entries happens in ROFS-mapped play engine code (memory-mapped from play.bin), not in firmware proper.
+
+The identity space (48 bits) is far larger than the cleartext header byte on the tag (which is consumed by the ASIC internally and never seen by the firmware).
+
+#### Stream 2 — Resource References (4 × u16 → bank selection)
+
+A separate TLV record (sub-type `0x0008`, tag byte `0x12`) carries 4 u16 resource references:
+
+| TLV Value | Offset | Range | Selects | From |
+| --- | --- | --- | --- | --- |
+| value0: Content ref start | +0x0C | 6–3200 | Content reference range | Used for content resolution |
+| value1: Content ref end | +0x0E | value0–3200 | Content reference range | Must be ≥ value0 |
+| value2: Bank index | +0x10 | 0–499 | **LED patterns** (timing + intensity) | `animation.bin` — 1 of 9 animation banks, 135 clips |
+| value3: Bank reference | +0x12 | 10–3200 | **Sounds** (synthesizer instructions) | `audio.bin` — 1 of 3 audio banks, 154 clips |
+
+These are extracted at `0x52454`, dispatched via opcode `0x72` through the message queue, and populate the slot table at `0x80931C` (audio/animation bank IDs per slot). The 3200 limit is a system-wide constant.
+
+#### How the two streams work together
+
+**Script behavior** is selected by the content identity (Stream 1) and type_byte via the PPL system. The content identity (6 bytes) flows into the PPL routing as an opaque key, the type_byte selects the event subtype, and the preset type (0x03, 0x06, etc.) determines the interaction mode. **Audio and animation banks** are selected by the 4 u16 resource references (Stream 2) via the slot table. The two streams are independent.
+
+The preset type is an **interaction mode slot**, not a tag hardware type. A tag scan establishes the content identity at `0x809430` — this persists and is reused by all subsequent events (timer → 0x0E, button/shake → 0x10, NPM → 0x09). This is how a single tag scan enables multiple interaction modes (movement sounds, color-triggered actions, shake responses, proximity play).
+
+Because the selections are independent, different tags can share identical gameplay behavior while having completely different sounds and LED patterns.
+
+**NPM/proximity scripts (type 0x09) are not selected by tags** — they are triggered by the firmware's NPM event system when another brick is detected nearby. The firmware maps NPM events to type 0x09. Script selection at the preset level is **deterministic** (content identity + type_byte always maps to the same script), but a **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5, seeded by content_lo ^ content_hi) introduces variation **within** scripts — generating random bytes that control which specific audio clips and LED patterns play each time. A 38-entry dispatch table at `0x37D5A4` (7 bytes/entry) drives event-to-script routing with type matching and condition evaluation (see FIRMWARE.md for full structure).
 
 ### Content Extensibility and Limits
 
@@ -959,11 +994,11 @@ Of the 58 script blocks in `play.bin` (v0.72.1):
 | **42** | **0x0E** | **1,564** | **6** | **9** | **17** | **71** |
 | 54 | 0x10 | — | — | — | — | — |
 
-Script 42 is the only type-0x0E (Item tag) script with PAwR. It is by far the largest and most complex script in the file.
+Script 42 is the only type-0x0E (Timer/idle) script with PAwR. It is by far the largest and most complex script in the file.
 
 **NPM/proximity scripts** (11 scripts, type 0x09):
 
-Scripts #21–#31 are **NPM positioning reaction scripts**. They respond to brick-to-brick proximity events, not tag scans or buttons. All 11 have header flag `0x40` (unique to type 0x09 and system type 0x0B). 10 of 11 are exactly 101 bytes — the same template with different audio/animation clip references. When another brick is detected nearby, one of these scripts is randomly selected (with roughly equal weight) and executed, producing a short audio/LED reaction.
+Scripts #21–#31 are **NPM positioning reaction scripts**. They respond to brick-to-brick proximity events, not tag scans or buttons. All 11 have header flag `0x40` (unique to type 0x09 and system type 0x0B). 10 of 11 are exactly 101 bytes — the same template with different audio/animation clip references. Script selection is deterministic (not random), though the exact NPM-to-script mapping is not yet fully traced.
 
 The remaining 43 scripts are single-brick experiences triggered by tags, buttons, timers, or idle states.
 
@@ -973,7 +1008,7 @@ The remaining 43 scripts are single-brick experiences triggered by tags, buttons
 
 #### Shared Script: Script 42
 
-Both the X-Wing and Imperial Turret exhibit PAwR combat behaviour (fire on red, hit counting, progressive damage, explosion). Script 42 is the **only** type-0x0E (Item tag) script with PAwR capability, so both tags must select it. They share identical gameplay logic but produce different experiences through different audio and animation bank selections.
+Both the X-Wing and Imperial Turret exhibit PAwR combat behaviour (fire on red, hit counting, progressive damage, explosion). Script 42 is the **only** type-0x0E (Timer/idle) script with PAwR capability, so both tags must select it. They share identical gameplay logic but produce different experiences through different audio and animation bank selections.
 
 **Script 42 characteristics** (confirmed from binary analysis):
 
@@ -1009,7 +1044,7 @@ The motion detection branches (1–2) use the same accelerometer range checks in
 | Content class | Different values | Different values | Medium — selects different audio/animation banks |
 | PAwR content type | `0x02` or `0x04` | `0x02` or `0x04` | High — required for PAwR |
 
-The tags differ only in their **audio bank** and **animation bank** references. The script, event type, content type, and PAwR content type are the same. This is the key architectural insight: the tag's content class and variant select different audio/animation assets while the script selection (via preset type and content index) points to the same behavioral logic.
+The tags differ only in their **audio bank** and **animation bank** references (Stream 2 resource references). The content identity (Stream 1) resolves to the same scripts. This is the key architectural insight: different tags can share the same 48-bit content identity (same scripts) while carrying different resource references (different sounds and LED patterns).
 
 #### What This Demonstrates
 
@@ -1061,7 +1096,7 @@ These events are processed by the play state machine in **state 5** ("sensor act
 
 #### NPM and Current Play Content
 
-**11 of 58 scripts use positioning.** Preset type `0x09` (scripts #21–#31) are dedicated NPM/proximity reaction scripts. They are short, uniform (~101 bytes each), and produce brief audio/LED reactions when another brick is detected nearby. One is randomly selected (weighted) when a proximity event fires.
+**11 of 58 scripts use positioning.** Preset type `0x09` (scripts #21–#31) are dedicated NPM/proximity reaction scripts. They are short, uniform (~101 bytes each), and produce brief audio/LED reactions when another brick is detected nearby. Script selection is deterministic based on the content_index from the event data.
 
 NPM events are **strictly content-signature routed**. The event builder at `0x50A94` tags each NPM event with the content hash `0xC47A2B46`. The dispatcher at `0x52588` looks up this hash in the session table at `0x80927C` — if no active session matches, the event is silently dropped. Scripts must have the PAwR capability flag (bit 1 at script+40) set to receive NPM events.
 
