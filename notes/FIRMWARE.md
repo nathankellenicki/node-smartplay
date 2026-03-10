@@ -339,9 +339,9 @@ Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=
 
 **FNV-1a content hashing** (`0x4E9B8`): Init `0x811C9DC5`, per byte XOR then multiply `0x01000193`. Used for fast content signature comparison.
 
-#### Stream 1: Content Identity (6 bytes + type_byte → script selection)
+#### Stream 1: Content Identity (6 bytes + type_byte → housekeeping)
 
-The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bit value that identifies the content experience. The firmware treats this as an **opaque identifier** — no sub-field extraction (no AND-masks, shifts, or modular arithmetic on the bytes). It is used for equality comparison, XOR hashing, and wildcard detection. Two parallel extraction paths exist:
+The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bit opaque value used for change detection and PRNG seeding, not as the primary driver of gameplay logic (see [FLOW.md](../notes/FLOW.md)). The firmware treats this as an **opaque identifier** — no sub-field extraction (no AND-masks, shifts, or modular arithmetic on the bytes). It is used for equality comparison, XOR hashing, and wildcard detection. Two parallel extraction paths exist:
 
 **ROM content identity reader** (`0x13E48`): Calls EM9305 mask ROM function at `0xffdfd164`, which returns a pointer to 6 bytes populated by the ASIC after tag decryption. Assembles into content_lo (u32 LE from bytes[0..3]) and content_hi (u16 LE from bytes[4..5], zero-extended). Called from 9 sites including boot init (`0x27A90`), play engine init (`0x4F93C`), BLE notification builder (`0x118F8`), content hash computation (`0x1A4D8`), and TLV entry handler (`0xEC16`).
 
@@ -353,11 +353,11 @@ The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bi
 
 **Content identity writer** (`0x4FF58`): Writes content_lo to `[0x809430]` and content_hi to `[0x809434]`. Called from boot init (`0x27A98`) and tag-change handler (`0x4F950`).
 
-**Content identity register** (`0x809430`): Stores the current content identity — content_lo (u32) at +0, content_hi (u32) at +4. Written by `0x4FF58` during boot and on tag change. Read by all subsequent event builders (timer at `0x50A20`, button at `0x50A94`, content resolver at `0x50FDC`, scan loop at `0x67634`) — this is how a tag scan establishes the content context for all interaction modes.
+**Content identity register** (`0x809430`): Stores the current content identity — content_lo (u32) at +0, content_hi (u32) at +4. Written by `0x4FF58` during boot and on tag change. Read by all subsequent event builders (timer at `0x50A20`, button at `0x50A94`, content resolver at `0x50FDC`, scan loop at `0x67634`) for change detection and PRNG seeding. The content identity persists after the tag scan so all subsequent events can detect whether the same tag is still present.
 
-**PPL XOR key** (`0x80CF28`): The PPL state struct init at `0x12134` computes `content_lo ^ content_hi` and stores it as the first field of the PPL struct at `0x80CF28`. This 32-bit hash key is used by the PPL system for content routing. The init also registers 11 PPL handler entries with IDs {0x48, 0x4C, 0x49, 0x4B, 0x06, 0x05, 0x07, 0x01, 0x02, 0x04, 0x08, 0x47} and ROFS table pointers.
+**PPL XOR key** (`0x80CF28`): The PPL state struct init at `0x12134` computes `content_lo ^ content_hi` and stores it as the first field of the PPL struct at `0x80CF28`. This 32-bit value seeds the xorshift32 PRNG that generates per-playback variation in audio/LED selection within scripts — different characters running the same script produce different variation sequences. The init also registers 11 PPL handler entries with IDs {0x48, 0x4C, 0x49, 0x4B, 0x06, 0x05, 0x07, 0x01, 0x02, 0x04, 0x08, 0x47} and ROFS table pointers.
 
-**Decrypted tag content block** (`0x807A60`): 24-byte region storing the full decrypted tag content output (NOT just an FNV hash). Written by `0x1A4C4` → `0x1A516`. Read by BLE register responses (`0x17922`), BLE advertisements (`0x1827A`), tag state notifications (`0x694EC`), and tag scan processing (`0x69B0E`). Zeroed on tag removal (`0x182AE`).
+**Decrypted tag content block** (`0x807A60`): 24-byte repacked summary from register 0x2E (part of the larger ASIC data delivery — see registers 0x04–0x07 for 4×20-byte blocks and 0x2A–0x2C for 3×100-byte buffers). Written by `0x1A4C4` → `0x1A516`. Read by BLE register responses (`0x17922`), BLE advertisements (`0x1827A`), tag state notifications (`0x694EC`), and tag scan processing (`0x69B0E`). Zeroed on tag removal (`0x182AE`).
 
 **FNV-1a hashing**: Six FNV-1a hash sites exist in the firmware (init `0x811C9DC5`, multiply `0x01000193`):
 - `0x0F114`: 4-byte hash of ASIC register data at `0x801400` → stored at `0x80942C`
@@ -366,20 +366,20 @@ The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bi
 - `0x34928`: Variable-length FNV used by play.bin bytecode interpreter
 - `0x4E9AC`: **Play engine bytecode FNV opcode** — scripts can compute FNV-1a hashes at runtime for content matching within play.bin
 
-**How the 6-byte identity participates in script selection:**
+**How the 6-byte identity flows through the PPL system:**
 
-The content identity flows into the PPL system through multiple paths — it is NOT merely a change-detection fingerprint:
+The content identity flows into the PPL system through multiple paths, though its primary role is housekeeping (change detection and PRNG seeding), not gameplay routing. The actual gameplay behaviour is driven by the resource reference records (Stream 2) — see [FLOW.md](../notes/FLOW.md):
 
-1. **PPL XOR key**: content_lo ^ content_hi stored at `0x80CF28+0` as the PPL state struct's primary key for content routing
-2. **Pool entry matching**: `0x4F97C` writes the 6-byte identity into 19-byte pool entries. The match score (`preset_type << 4 + bonus`: exact=+10, wildcard=+3, mismatch=+2) affects which pool entry wins, influencing the script offset
-3. **Script executor**: `0x4F7B4` walks a linked list of pool entries (which contain the identity), accumulates sizes, and selects the script at the target offset
+1. **PRNG seed**: content_lo ^ content_hi stored at `0x80CF28+0` — seeds the xorshift32 PRNG for per-playback variation in audio/LED selection within scripts
+2. **Change detection**: XOR comparison at `0x809430` (same tag vs new tag, avoids reloading)
+3. **Pool entry matching**: `0x4F97C` writes the 6-byte identity into 19-byte pool entries. The match score (`preset_type << 4 + bonus`: exact=+10, wildcard=+3, mismatch=+2) affects which pool entry wins — this is priority tiebreaking, not the primary script selector
 4. **Event dispatchers**: `0x505A4`, `0x505F0`, etc. call `0x6CEC8` to validate play.bin context at `[0x80D948]`, then call `0x50FDC` with the content identity and preset type
 
-The **actual matching logic** — where the content identity or XOR key is compared against PPL preset table params to find the specific script — happens in ROFS-mapped play engine code (memory-mapped from play.bin), which is not visible in the firmware disassembly. The event category hashes passed in r2 (e.g., `0xC47A2B46` for NPM, `0x4E58710B` for tag identity, `0x0BBDA113` for items) identify the event type, not the tag content.
+The **actual matching logic** — where content_ref values from resource reference records are compared against PPL preset table params to find specific scripts — happens in ROFS-mapped play engine code (memory-mapped from play.bin), which is not visible in the firmware disassembly. The event category hashes passed in r2 (e.g., `0xC47A2B46` for NPM, `0x4E58710B` for tag identity, `0x0BBDA113` for items) identify the event type, not the tag content.
 
-#### Stream 2: Resource References (4 × u16 → bank selection)
+#### Stream 2: Resource References (multiple records → script + bank selection)
 
-A separate TLV record carries resource references for audio and animation banks.
+Multiple TLV records carry resource references — each independently selecting a script, audio bank, and animation bank. This is the primary driver of gameplay logic (see [FLOW.md](../notes/FLOW.md)).
 
 **Tag TLV dispatch** (`0x523E4`): After TLV parsing at `0x4EC58`, dispatches by TLV type field. Type 4 → Identity tag handler chain (`0x47BE8` → callback at `0x5241C`). Type 6 → Item tag handler (`0x4D6B8` → vtable dispatch via `0x801B10` → `0x4D8E4`). Both paths extract 4 × u16 resource reference values from TLV sub-type `0x0008` at `0x52454`.
 
@@ -728,7 +728,7 @@ The PPL (Play Preset Library) file contains all play scripts as flat linearized 
 
 #### Preset Table (offset 0x10)
 
-61 entries of 8 bytes each: `[type:4][param:4]`. The first 3 entries are preamble/default script references (type=0x0B, values=[80, 64, 96]). The remaining 58 entries map 1:1 to the 58 scripts. The `param` field appears to encode `[content_id:8 (bits 11:4)][slot:4 (bits 3:0)]` — content IDs shared across preset groups link scripts for the same content across interaction modes (e.g., 6 params shared between type 0x03 and type 0x09). The exact matching mechanism between the tag's 48-bit content identity and these param values happens in ROFS-mapped play engine code (not fully traced). Script selection at the preset level is **deterministic** — but a **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5) seeded by content_lo ^ content_hi generates variation within scripts (see Event Dispatch Table section below).
+61 entries of 8 bytes each: `[type:4][param:4]`. The first 3 entries are preamble/default script references (type=0x0B, values=[80, 64, 96]). The remaining 58 entries map 1:1 to the 58 scripts. The `param` field is the matching key for resource reference `content_ref` values from tag data — the content_ref from each resource reference record is matched against params with the appropriate preset type to select a script. Params shared across preset groups link scripts for the same content across interaction modes (e.g., 6 params shared between type 0x03 and type 0x09). The exact matching mechanism happens in ROFS-mapped play engine code (not fully traced). A **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5) seeded by content_lo ^ content_hi generates variation within scripts (see Event Dispatch Table section below).
 
 Six distinct type IDs group content by **interaction mode** — not by tag hardware type:
 
@@ -813,15 +813,15 @@ Byte values that map to values > 25 in the translation table are operand data co
 
 The ASIC-decrypted tag payload produces **two separate data streams**:
 
-**Stream 1 — Content Identity (6 bytes + type_byte → script selection):**
+**Stream 1 — Content Identity (6 bytes + type_byte → housekeeping):**
 
-A 6-byte opaque content identity extracted via ROM function `0xffdfd164` (or TLV buffer at `0x4FC58`). Packed into content_lo (u32) + content_hi (u16). Plus a **type_byte** (7th byte from TLV type 0x22 handler at `0xED74`) that serves as the PPL event subtype — byte 0 of the PPL event node that scripts match against.
+A 6-byte opaque content identity extracted via ROM function `0xffdfd164` (or TLV buffer at `0x4FC58`). Packed into content_lo (u32) + content_hi (u16). Plus a **type_byte** (7th byte from TLV type 0x22 handler at `0xED74`) that routes events to preset type categories (0x03=identity, 0x06=item, etc.).
 
-The identity flows into the PPL system: XOR key (content_lo ^ content_hi) at `0x80CF28` as the PPL routing key, pool entry match scoring (exact=+10, wildcard=+3, mismatch=+2) affecting script offset selection, and pool entries carrying the identity through the script executor at `0x4F7B4`. The scan loop at `0x67634` XOR-compares against `[0x809430]` for change detection. The actual matching between the content identity and PPL preset table entries happens in ROFS-mapped play engine code (not visible in firmware disassembly).
+The content identity is **not** the primary driver of gameplay logic — it is housekeeping: change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28` seeds the xorshift32 for per-playback variation in audio/LED selection). Different characters running the same script produce different variation sequences, making characters feel distinct. The identity also flows into pool entries and match scoring, but the actual gameplay behaviour is driven by resource reference records (Stream 2) — see [FLOW.md](../notes/FLOW.md).
 
-**Stream 2 — Resource References (4 × u16 → bank selection):**
+**Stream 2 — Resource References (multiple records → script + bank selection):**
 
-A separate TLV record (sub-type `0x0008`, tag byte `0x12`, data length 8):
+Multiple TLV records (sub-type `0x0008`, tag byte `0x12`, data length 8 each) — the primary driver of gameplay logic:
 
 ```
 +0x00..+0x07  TLV header (type ID, length, etc.)
@@ -836,9 +836,9 @@ A separate TLV record (sub-type `0x0008`, tag byte `0x12`, data length 8):
 
 Extracted at `0x52454`, dispatched via opcode `0x72` (`0x16B84`) through the message queue. The handler chain populates the slot table at `0x80931C` with audio and animation bank IDs, read back by item handler `0x4D6FC`/`0x4D8E4`.
 
-**Script selection** uses the content identity + type_byte (Stream 1), not the 4 u16 resource references. The content identity flows through the PPL system (XOR key at `0x80CF28`, pool entries, match scoring), while the type_byte routes to specific scripts as the event subtype. The 4 u16 values (Stream 2) select which audio/animation banks those scripts use. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), button/shake → 0x10 (`0x50A94`). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
+Each resource reference record independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode. The content identity (Stream 1) is housekeeping: change detection and PRNG seeding. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), button/shake → 0x10 (`0x50A94`). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
 
-Script selection at the preset level is **deterministic** — the content identity + type_byte always maps to the same script. However, a **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **below** the script selection level — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play within the selected script.
+A **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **within** scripts — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play. Different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. See [FLOW.md](../notes/FLOW.md) for the full tag→play engine flow.
 
 #### Event Dispatch Table (0x37D5A4)
 

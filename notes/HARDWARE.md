@@ -95,7 +95,7 @@ Block 14: 11 61 D8 49    Block 30: B3 50 2B 7F
 Block 15: E2 65 14 F3    Block 31: F4 93 DF A6
 ```
 
-**Tag 1b: Jedi Luke Skywalker** — UID `E0:16:5C:01:1D:37:E8:50`, Content ID `0x9D`
+**Tag 1b: Jedi Luke Skywalker** — UID `E0:16:5C:01:1D:37:E8:50`, Payload length `0x9D` (157 bytes)
 
 ```
 Block  0: 00 9D 01 0C    Block 16: 12 13 1F 33    Block 32: 04 3B 47 4E
@@ -118,7 +118,7 @@ Block 15: E2 65 14 F3    Block 31: F4 93 DF A6
 
 Data is **byte-for-byte identical** to Tag 1 (Pilot Luke Skywalker). Different physical minifig, different UID, same content.
 
-**Tag 2: Darth Vader** — UID `E0:16:5C:01:1F:C8:8E:45`, Content ID `0xA9`
+**Tag 2: Darth Vader** — UID `E0:16:5C:01:1F:C8:8E:45`, Payload length `0xA9` (169 bytes)
 
 ```
 Block  0: 00 A9 01 0C    Block 16: 88 5F 47 57    Block 32: 90 B8 88 B6
@@ -141,7 +141,7 @@ Block 15: BA E3 E9 A0    Block 31: A5 F0 B7 95
 
 **169 bytes of data** (blocks 0–42).
 
-**Tag 3: Emperor Palpatine** — UID `E0:16:5C:01:1F:BB:14:18`, Content ID `0xAB`
+**Tag 3: Emperor Palpatine** — UID `E0:16:5C:01:1F:BB:14:18`, Payload length `0xAB` (171 bytes)
 
 ```
 Block  0: 00 AB 01 0C    Block 16: 7D 12 B5 71    Block 32: E9 AD DC C8
@@ -164,7 +164,7 @@ Block 15: A9 96 46 57    Block 31: 3C C5 CB C7
 
 **171 bytes of data** (blocks 0–42).
 
-**Tag 4: Leia** — Content ID `0x9E` (verified against second Leia minifig)
+**Tag 4: Leia** — Payload length `0x9E` (158 bytes) (verified against second Leia minifig)
 
 ```
 Block  0: 00 9E 01 0C    Block 16: FB D5 81 C2    Block 32: 90 D4 5A D3
@@ -185,7 +185,7 @@ Block 14: 7C 27 0C 5F    Block 30: 9C E4 BD 5D
 Block 15: 5E 7F 83 9C    Block 31: A2 DE 9C A2
 ```
 
-**Tag 5: R2-D2** — UID `E0:16:5C:01:26:19:58:B2`, Content ID `0x4A`
+**Tag 5: R2-D2** — UID `E0:16:5C:01:26:19:58:B2`, Payload length `0x4A` (74 bytes)
 
 ```
 Block  0: 00 4A 01 0C
@@ -214,7 +214,7 @@ Blocks 19-65: 00 00 00 00
 
 #### Raw Memory Dumps — Item Tags (Smart Tiles)
 
-**Tag 6: Lightsaber Tile** — UID `E0:16:5C:01:1B:F7:4D:57`, Content ID `0x7E`
+**Tag 6: Lightsaber Tile** — UID `E0:16:5C:01:1B:F7:4D:57`, Payload length `0x7E` (126 bytes)
 
 ```
 Block  0: 00 7E 01 0C    Block 16: 8C B7 25 DA
@@ -238,11 +238,11 @@ Block 15: BA 97 2F 9E    Block 31: 01 94 00 00
 
 **126 bytes of data** (blocks 0–31, block 31 partial). Blocks 32–65 are all zeros.
 
-**Tag 7: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Content ID `0x7E`
+**Tag 7: Lightsaber Tile** — UID `E0:16:5C:01:1B:FE:9F:53`, Payload length `0x7E` (126 bytes)
 
 Data is **byte-for-byte identical** to Tag 6 (same content ID `0x7E`, same 126 bytes). See "UID Independence" below.
 
-**Tag 8: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Content ID `0x6B`
+**Tag 8: X-Wing Tile** — UID `E0:16:5C:01:21:E2:94:ED`, Payload length `0x6B` (107 bytes)
 
 ```
 Block  0: 00 6B 01 0C    Block 16: DB 4A D1 13
@@ -267,7 +267,7 @@ Block 15: 3C 37 F8 DC
 
 #### Tag Comparison
 
-All tags share the same **5-byte cleartext header** `00 XX 01 0C 01`, where byte 1 is the content ID:
+All tags share the same **5-byte cleartext header** `00 XX 01 0C 01`, where byte 1 is the **payload length**:
 
 ```
                Byte 0  Byte 1  Byte 2  Byte 3  Byte 4   Payload   Blocks used
@@ -282,54 +282,52 @@ X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 
 | Byte | Value | Meaning |
 | --- | --- | --- |
-| 0 | `0x00` | Fixed across all known tags — always zero |
-| 1 | varies | **Content ID** (observed) |
-| 2 | `0x01` | Fixed across all known tags |
+| 0 | `0x00` | Fixed — possibly high byte of 16-bit length (all payloads < 256) |
+| 1 | varies | **Payload length** in bytes (matches actual data size exactly for all 7 tags) |
+| 2 | `0x01` | Fixed — format version or type |
 | 3 | `0x0C` | Fixed — format version or flags |
 | 4 | `0x01` | Fixed — unknown |
 
-**Content ID field size is uncertain.** Byte 1 varies per tag and is the only byte observed to change, but bytes 0 and 2 being constant across just 7 known tags doesn't prove they aren't part of a wider content ID field. A future firmware/tag generation could use bytes 0 and/or 2 to extend beyond 255 unique IDs. We cannot determine the true field width because:
+**Byte 1 is NOT a content ID** — it is the payload length. The values match the total data size for every known tag (e.g. Leia `0x9E` = 158, R2-D2 `0x4A` = 74, Lightsaber `0x7E` = 126). The actual content identity is in the **encrypted payload** as a 6-byte opaque value extracted after ASIC decryption. What appeared to be unique "content IDs" was a coincidence of different tag types having different payload sizes.
 
-1. **The EM9305 firmware never sees the cleartext header.** The ASIC reads raw EEPROM, decrypts it, and sends a restructured response over SPI. The firmware contains zero references to any known content ID value (`0x9D`, `0xA9`, etc.) or header constants (`0x0C`).
-2. **The companion app has no NFC functionality.** The SmartAssist app communicates with the brick over BLE only — it never reads tags directly via phone NFC. No tag content ID parsing exists in the IL2CPP dump.
-3. **The cleartext content ID is consumed solely by the ASIC silicon.** It likely selects the decryption key/route, but the ASIC's internal logic is opaque. The actual content identity used by the play engine comes from the **decrypted payload** as a 6-byte opaque identity (via ROM function `0xffdfd164` or TLV extraction at `0x4FC58`), plus a type_byte from TLV type 0x22.
+**The true content identity field width is unknown.** We cannot determine it from the cleartext header because:
 
-The cleartext header may exist for future use cases (e.g., phone-based tag identification without decryption) or may be purely an ASIC-internal routing mechanism.
+1. **The EM9305 firmware never sees the cleartext header.** The ASIC reads raw EEPROM, decrypts it, and sends a restructured response over SPI. The firmware contains zero references to any header byte values or header constants (`0x0C`).
+2. **The companion app has no NFC functionality.** The SmartAssist app communicates with the brick over BLE only — it never reads tags directly via phone NFC. No tag parsing exists in the IL2CPP dump.
+3. **The cleartext header is consumed solely by the ASIC silicon.** The payload length likely controls how much data to decrypt. The actual content identity used by the play engine comes from the **decrypted payload** as a 6-byte opaque identity (via ROM function `0xffdfd164` or TLV extraction at `0x4FC58`), plus a type_byte from TLV type 0x22.
 
 **Item tags are shorter than Identity tags.** Identity tags use ~157–169 bytes across blocks 0–39 (or 0–42 for Vader); Item tiles use ~107–126 bytes across blocks 0–26/31. Both types leave remaining blocks as zeros.
 
-The two Item tiles have **different content IDs** (`0x7E` = Lightsaber, `0x6B` = X-Wing) — each tile content gets its own ID, as expected.
+#### Known Tags
 
-#### Known Content IDs
-
-| ID | Tag Type | Content |
+| Payload Length | Tag Type | Content |
 | --- | --- | --- |
-| `0x4A` | Identity (tile*) | R2-D2 — physically a tile, acts as Identity minifig |
-| `0x6B` | Item (tile) | X-Wing |
-| `0x7E` | Item (tile) | Lightsaber |
-| `0x9D` | Identity (minifig) | Luke Skywalker (Pilot Luke / Jedi Luke confirmed identical) |
-| `0x9E` | Identity (minifig) | Leia |
-| `0xA9` | Identity (minifig) | Darth Vader |
-| `0xAB` | Identity (minifig) | Emperor Palpatine |
+| 74 (`0x4A`) | Identity (tile*) | R2-D2 — physically a tile, acts as Identity minifig |
+| 107 (`0x6B`) | Item (tile) | X-Wing |
+| 126 (`0x7E`) | Item (tile) | Lightsaber |
+| 157 (`0x9D`) | Identity (minifig) | Luke Skywalker (Pilot Luke / Jedi Luke confirmed identical) |
+| 158 (`0x9E`) | Identity (minifig) | Leia |
+| 169 (`0xA9`) | Identity (minifig) | Darth Vader |
+| 171 (`0xAB`) | Identity (minifig) | Emperor Palpatine |
 
 #### Encrypted Region (bytes 5+)
 
-From byte 5 onward, tags with **different content IDs** are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with AES or similar block cipher encryption.
+From byte 5 onward, tags with different payload sizes are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with AES or similar block cipher encryption.
 
 #### UID Independence
 
 Two physical Lightsaber tiles (Tags 6 and 7) with **different UIDs** contain **byte-for-byte identical EEPROM data**:
 
-| | UID | Content ID | Data |
+| | UID | Payload Length | Data |
 | --- | --- | --- | --- |
-| Tag 6 | `E0:16:5C:01:1B:F7:4D:57` | `0x7E` | 126 bytes |
-| Tag 7 | `E0:16:5C:01:1B:FE:9F:53` | `0x7E` | 126 bytes (identical) |
+| Tag 6 | `E0:16:5C:01:1B:F7:4D:57` | 126 (`0x7E`) | 126 bytes |
+| Tag 7 | `E0:16:5C:01:1B:FE:9F:53` | 126 (`0x7E`) | 126 bytes (identical) |
+
+Similarly, Leia data verified identical across two minifigs with different UIDs.
 
 This proves:
 1. **Encryption is NOT UID-diversified** — the UID plays no role in the ciphertext
-2. **All tags of the same content type have identical EEPROM data** — it's a fixed blob per content ID
-
-The ASIC does **not** use the tag UID for decryption. The encrypted data is a static per-content-ID payload programmed identically into all physical tags of that type at the factory.
+2. **All tags of the same content have identical EEPROM data** — it's a fixed blob programmed identically into all physical tags of that type at the factory
 
 #### Security Model
 
@@ -408,7 +406,7 @@ After validation, the firmware reads content from the parsed tag event struct:
 | 16 | 4 bytes | Extended data (item tags, content types 3/4) |
 | 20 | 4 bytes | Extended data (item tags only) |
 
-Identity tags (minifigs) and item tags (tiles) both carry encrypted data that the ASIC decrypts into two streams: a 6-byte content identity (48-bit key for script selection) and TLV resource references (4 × u16 for audio/animation bank selection). The struct offsets 8–20 listed above are from the pre-decryption event struct format — the actual content data is in TLV records after ASIC decryption.
+Identity tags (minifigs) and item tags (tiles) both carry encrypted data that the ASIC decrypts into two streams: a 6-byte content identity (housekeeping — change detection and PRNG seeding) and multiple TLV resource reference records (each selecting a script, audio bank, and animation bank). The struct offsets 8–20 listed above are from the pre-decryption event struct format — the actual content data is in TLV records after ASIC decryption.
 
 ### Tag Event Types
 
@@ -707,13 +705,16 @@ The firmware is a **generic play engine** — it doesn't know what an X-Wing, a 
 - **Sensor reading** (accelerometer, light/color, sound)
 - **PAwR messaging** for inter-brick communication
 
-All specific behaviour lives in the **ROFS content files** (`play.bin`, `audio.bin`, `animation.bin`), not in the firmware code. The tag carries two separate data streams after ASIC decryption: a **48-bit content identity** (6 bytes) that selects scripts via the PPL preset table, and **4 u16 resource references** that select audio/animation banks. The firmware resolves the content identity to matching script nodes, then the semantic tree executor runs those scripts reactively against sensor input.
+All specific behaviour lives in the **ROFS content files** (`play.bin`, `audio.bin`, `animation.bin`), not in the firmware code. The tag is a **playlist** — after ASIC decryption, it produces multiple **resource reference records**, each selecting a `{script, audio_bank, animation_bank}` tuple. A separate **content identity** (6 bytes) serves as housekeeping — change detection and PRNG seeding for per-character variation. The semantic tree executor runs the selected scripts reactively against sensor input. See [FLOW.md](FLOW.md) for the full tag→play engine flow.
 
 ```
 Smart Tag (encrypted payload)
   ↓ ASIC decrypts
-  ↓ Stream 1: 6-byte content identity → PPL search → selects scripts from play.bin
-  ↓ Stream 2: 4 × u16 resource refs   → slot table → selects banks from audio.bin / animation.bin
+  ↓ Content identity (6 bytes) → change detection + PRNG seed (housekeeping)
+  ↓ Resource reference records (multiple per tag):
+  ↓   content_ref → PPL preset table → selects script from play.bin
+  ↓   bank_index  → selects animation bank from animation.bin
+  ↓   bank_ref    → selects audio bank from audio.bin
 ROFS content
   ↓ script = reactive logic (sensor conditions, branching, PAwR, state machines)
   ↓ audio  = synthesizer instructions for ASIC
@@ -723,7 +724,7 @@ Firmware engine (generic)
 Hardware (ASIC speaker, LEDs, PAwR radio)
 ```
 
-Different tags can share the same content identity (same scripts) but carry different resource references (different audio/animation banks), producing different sounds and LED patterns with identical gameplay behaviour.
+The brick does not need to "know about" a tag in advance — any tag that references valid scripts and banks in the ROFS will work without a firmware update. New characters are just new combinations of content_ref + bank_index + bank_ref values pointing to existing content.
 
 ### Execution Pipeline
 
@@ -899,57 +900,57 @@ All three binary files use an ELF-inspired magic: `0x7F` followed by a 3-charact
 
 The firmware is a **generic engine**. All specific play behaviour (X-Wing swooshes, laser sounds, hit counting, explosion sequences) is encoded in `play.bin` as reactive scripts. The firmware provides the execution machinery (synthesizer, semantic tree executor, PPL, sensor reading, PAwR messaging) but has no knowledge of specific play experiences. The `audio.bin` clips are not PCM recordings — they are **synthesizer instruction sequences** for the ASIC's analog synthesizer, meaning all audio is generated procedurally.
 
-Content is **not indexed by tag UID**. Tags carry their own content identity and resource references which the firmware uses to select scripts and look up entries in the ROFS files. Two tags with the same content fields behave identically regardless of UID. The PPL resolver compares tag content signatures (via FNV-1a hashing) to decide whether to continue the current preset or switch content.
+Content is **not indexed by tag UID**. Tags are self-describing playlists — their resource reference records select scripts, audio banks, and animation banks from the ROFS files. Two tags with the same resource references behave identically regardless of UID. The content identity (6 bytes) is used for change detection (same tag vs new tag) and PRNG seeding (per-character variation).
 
 ### Content Indexing
 
 The ASIC-decrypted tag payload produces **two separate data streams**:
 
-#### Stream 1 — Content Identity (6 bytes + type_byte → script selection)
+#### Stream 1 — Content Identity (6 bytes + type_byte → housekeeping)
 
 Each tag carries a **6-byte content identity** (48-bit opaque value) plus a **type_byte** (1 byte). After ASIC decryption, these are accessible via EM9305 ROM function `0xffdfd164` (6 bytes) or extracted from the TLV buffer by `0x4FC58`. The 6 bytes are packed into content_lo (u32 LE) + content_hi (u16 LE). The type_byte is the 7th byte from a separate TLV type 0x22 record.
 
 The firmware treats the 6 bytes as **opaque** — no sub-field extraction ever occurs (no masks, shifts, or modular arithmetic). The firmware only:
 - XOR-compares for equality (same tag vs different tag, in scan loop at `0x67634`)
-- XORs content_lo ^ content_hi for a 32-bit hash key (stored at `0x80CF28` as the PPL state struct's primary routing key)
+- XORs content_lo ^ content_hi for a 32-bit hash key (stored at `0x80CF28` to seed the xorshift32 PRNG)
 - Checks for the wildcard value (all 0xFF = no tag)
 - Writes into pool entries (19 bytes) for the PPL matching system
 - Serializes byte-by-byte for BLE notifications
 
-The **type_byte** is the PPL event subtype — it becomes byte 0 of the PPL event node, which play.bin scripts match against. This is the value that routes to specific scripts within a preset group.
+The **type_byte** routes events to the correct preset type category (0x03=identity, 0x06=item, etc.).
 
-The content identity participates in script selection through the PPL system: the XOR key at `0x80CF28` is the PPL state struct's primary key, pool entry match scoring (exact=+10, wildcard=+3, mismatch=+2) affects priority, and the script executor walks pool entries to select scripts. However, the **actual matching logic** between the content identity and PPL preset table entries happens in ROFS-mapped play engine code (memory-mapped from play.bin), not in firmware proper.
+The content identity is **not** the primary driver of gameplay logic. It is essentially a session key: "has the tag changed?" and "which random sequence should we use?" The PRNG seed means different characters running the same script produce different variation sequences — different audio clips and LED patterns each playback, making characters feel distinct even when sharing scripts. The content identity also flows into the PPL system (pool entries, match scoring), but the **actual matching logic** happens in ROFS-mapped play engine code (memory-mapped from play.bin), not in firmware proper. The actual gameplay behaviour is driven by the resource reference records (Stream 2) — see [FLOW.md](FLOW.md).
 
 The identity space (48 bits) is far larger than the cleartext header byte on the tag (which is consumed by the ASIC internally and never seen by the firmware).
 
-#### Stream 2 — Resource References (4 × u16 → bank selection)
+#### Stream 2 — Resource References (multiple records → script + bank selection)
 
-A separate TLV record (sub-type `0x0008`, tag byte `0x12`) carries 4 u16 resource references:
+Multiple TLV records (sub-type `0x0008`, tag byte `0x12`) carry **resource references** — each one independently selecting a complete interaction profile:
 
 | TLV Value | Offset | Range | Selects | From |
 | --- | --- | --- | --- | --- |
-| value0: Content ref start | +0x0C | 6–3200 | Content reference range | Used for content resolution |
-| value1: Content ref end | +0x0E | value0–3200 | Content reference range | Must be ≥ value0 |
+| value0: Content ref start | +0x0C | 6–3200 | Matches PPL preset table `param` → **script** | `play.bin` |
+| value1: Content ref end | +0x0E | value0–3200 | Content reference range end | Must be ≥ value0 |
 | value2: Bank index | +0x10 | 0–499 | **LED patterns** (timing + intensity) | `animation.bin` — 1 of 9 animation banks, 135 clips |
 | value3: Bank reference | +0x12 | 10–3200 | **Sounds** (synthesizer instructions) | `audio.bin` — 1 of 3 audio banks, 154 clips |
 
-These are extracted at `0x52454`, dispatched via opcode `0x72` through the message queue, and populate the slot table at `0x80931C` (audio/animation bank IDs per slot). The 3200 limit is a system-wide constant.
+A single tag produces **multiple resource reference records** — one for each interaction mode the tag supports. This is why tag payload sizes vary: more interaction modes = more records = more encrypted bytes. Each record is extracted at `0x52454`, dispatched via opcode `0x72` through the message queue, and populates the slot table at `0x80931C`. The 3200 limit is a system-wide constant.
 
 #### How the two streams work together
 
-**Script behavior** is selected by the content identity (Stream 1) and type_byte via the PPL system. The content identity (6 bytes) flows into the PPL routing as an opaque key, the type_byte selects the event subtype, and the preset type (0x03, 0x06, etc.) determines the interaction mode. **Audio and animation banks** are selected by the 4 u16 resource references (Stream 2) via the slot table. The two streams are independent.
+Each **resource reference record** (Stream 2) independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode the tag supports. This is why tag payload sizes vary: more interaction modes = more records = more encrypted bytes.
 
-The preset type is an **interaction mode slot**, not a tag hardware type. A tag scan establishes the content identity at `0x809430` — this persists and is reused by all subsequent events (timer → 0x0E, button/shake → 0x10, NPM → 0x09). This is how a single tag scan enables multiple interaction modes (movement sounds, color-triggered actions, shake responses, proximity play).
+The **content identity** (Stream 1) is housekeeping — change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28`). The type_byte routes events to preset type categories (0x03=identity, 0x06=item). The preset type is an **interaction mode slot**, not a tag hardware type. A tag scan establishes the content identity at `0x809430` — this persists and is reused by all subsequent events (timer → 0x0E, button/shake → 0x10, NPM → 0x09). This is how a single tag scan enables multiple interaction modes (movement sounds, color-triggered actions, shake responses, proximity play).
 
-Because the selections are independent, different tags can share identical gameplay behavior while having completely different sounds and LED patterns.
+The tag is a **playlist** of `{script, audio_bank, animation_bank}` tuples. The brick does not need to "know about" a tag in advance — any tag that references valid ROFS content will work without a firmware update. See [FLOW.md](FLOW.md) for the full flow.
 
-**NPM/proximity scripts (type 0x09) are not selected by tags** — they are triggered by the firmware's NPM event system when another brick is detected nearby. The firmware maps NPM events to type 0x09. Script selection at the preset level is **deterministic** (content identity + type_byte always maps to the same script), but a **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5, seeded by content_lo ^ content_hi) introduces variation **within** scripts — generating random bytes that control which specific audio clips and LED patterns play each time. A 38-entry dispatch table at `0x37D5A4` (7 bytes/entry) drives event-to-script routing with type matching and condition evaluation (see FIRMWARE.md for full structure).
+A **xorshift32 PRNG** at `0x1E5D2` (parameters 13, 17, 5, seeded by content_lo ^ content_hi) introduces variation **within** scripts — generating random bytes that control which specific audio clips and LED patterns play each time. This means different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. A 38-entry dispatch table at `0x37D5A4` (7 bytes/entry) drives event-to-script routing with type matching and condition evaluation (see FIRMWARE.md for full structure).
 
 ### Content Extensibility and Limits
 
 The ROFS is baked into the firmware binary (zlib-compressed second segment). There is no separate content update channel — the WDX file transfer protocol only supports full firmware upload, telemetry download, and fault log download. **New scripts, sounds, or animations require a firmware update.**
 
-However, Smart Tags are **combinatorial selectors** — LEGO can produce new tags that reference any combination of the existing 58 scripts × 3 audio banks × 9 animation banks without a firmware update. As long as a tag's content fields point to existing IDs, it works. This is a large design space already exercised in practice (X-Wing and Imperial Turret share the same combat script with different audio/animation banks).
+However, Smart Tags are **combinatorial selectors** — LEGO can produce new tags that reference any combination of the existing 58 scripts × 3 audio banks × 9 animation banks without a firmware update. As long as a tag's resource references point to existing ROFS content, it works. This is a large design space — a new character is just a new combination of content_ref + bank_index + bank_ref values.
 
 #### Content Growth Across Firmware Versions
 
@@ -1042,7 +1043,7 @@ The motion detection branches (1–2) use the same accelerometer range checks in
 | Content class | Different values | Different values | Medium — selects different audio/animation banks |
 | PAwR content type | `0x02` or `0x04` | `0x02` or `0x04` | High — required for PAwR |
 
-The tags differ only in their **audio bank** and **animation bank** references (Stream 2 resource references). The content identity (Stream 1) resolves to the same scripts. This is the key architectural insight: different tags can share the same 48-bit content identity (same scripts) while carrying different resource references (different sounds and LED patterns).
+Both tags' resource reference records select the same script (Script 42) but carry different audio and animation bank references — producing different sounds and LED patterns with identical gameplay logic. This demonstrates the playlist architecture: each tag independently selects its own combination of `{script, audio_bank, animation_bank}` tuples via resource reference records. (Note: whether the two tags also share the same content identity cannot be verified — the tag data is encrypted.)
 
 #### What This Demonstrates
 

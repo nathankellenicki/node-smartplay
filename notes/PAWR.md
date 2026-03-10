@@ -279,11 +279,11 @@ This traces the full technical path from power-on through gameplay for a three-b
 
 1. **Power on.** The EM9305 boots, loads persisted state from flash.
 2. **Tag scan.** The DA000001-01 ASIC reads the X-Wing Smart Tag via its copper coils (ISO 15693, 13.56 MHz). The ASIC decrypts the tag data internally using keys burned into silicon, then passes the decrypted TLV content to the EM9305 firmware.
-3. **Content identity extraction.** Firmware extracts the 6-byte content identity and type_byte from TLV type 0x22 (at `0xED74`). The XOR key (content_lo ^ content_hi) is written to `0x80CF28` for PPL script routing.
+3. **Content identity extraction.** Firmware extracts the 6-byte content identity and type_byte from TLV type 0x22 (at `0xED74`). The XOR key (content_lo ^ content_hi) is written to `0x80CF28` as the PRNG seed for per-playback variation. Resource reference records from the tag select scripts, audio banks, and animation banks.
 4. **Content type dispatch.** The type_byte maps to a content type. Code at `0x632e` checks: types `0x02` and `0x04` mean "multi-brick play." The X-Wing content is one of these types.
 5. **PAwR session init.** A PAwR session is initiated with group UUID `0x7020162E` (type 2) or `0xBF8C4668` (type 4). The session init code at `0x505f0` builds the initial message template.
 6. **Becomes coordinator.** No existing PAwR train is found, so Brick 1 starts one. It begins broadcasting AUX_SYNC_IND periodic advertising on secondary channels with the pattern `1e ff 06 00 01 0f 20 22 ...`. PAwR subevent slots are allocated for responders.
-7. **Play engine loads scripts.** The PPL preset system loads X-Wing play scripts from `play.bin`. Preset type `0x03` (content group A, scripts #0–#15) handles the minifig/content-specific behaviour. Timer/idle scripts (`0x0E`, #35–#50) and sensor/interaction scripts (`0x10`, #51–#57) are also active.
+7. **Play engine loads scripts.** The tag's resource reference records select scripts from the PPL preset table — one per interaction mode. Preset type `0x03` (content group A, scripts #0–#15) handles the initial tag placement response. Timer/idle scripts (`0x0E`, #35–#50) and sensor/interaction scripts (`0x10`, #51–#57) are also loaded from their respective resource reference records.
 
 ### Phase 2 — Brick 2 Boots (First TIE Fighter)
 
@@ -299,7 +299,7 @@ This traces the full technical path from power-on through gameplay for a three-b
 
 ### Phase 4 — Gameplay (Weapon Fire)
 
-14. **Colour sensor trigger on Brick 1.** You show the colour red to the brick's colour sensor. The DA000001-01 ASIC detects the colour and generates an event. The play engine maps "red detected" to the weapon-fire action for X-Wing content — this is how all Smart Bricks trigger actions (there is no physical button). The PPL preset system selects the appropriate weapon-fire script based on the content identity + type_byte.
+14. **Colour sensor trigger on Brick 1.** You show the colour red to the brick's colour sensor. The DA000001-01 ASIC detects the colour and generates an event. The play engine maps "red detected" to the weapon-fire action for X-Wing content — this is how all Smart Bricks trigger actions (there is no physical button). The PPL preset system selects the appropriate weapon-fire script based on the tag's resource reference records (content_ref matching the PPL preset table).
 15. **Local sound playback.** The semantic tree executor runs the weapon script locally. An audio command is dispatched to the DA000001-01 ASIC's analog synthesizer, which plays the weapon sound effect through the speaker. LED animations fire simultaneously.
 16. **Opcode 21 — distributed execute.** The weapon script contains semantic tree opcode 21 (distributed execute). This is the instruction that means "send this state to other bricks." The BrickNet transport at `0x6CEF8` — a 13-opcode sub-interpreter — serializes the current tree position, condition values, and output buffer into a 25-byte BrickNet message.
 17. **XOR encrypt.** The encrypt function at `0x6d1fc` XORs the first 16 bytes of the message with the session key (Key A for bytes 2–8, Key B for bytes 9–15, counter for bytes 0–1). Bytes 16–24 are left as cleartext.

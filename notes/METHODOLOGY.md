@@ -226,7 +226,7 @@ Tags scanned using a standard NFC phone with ISO 15693 support:
 02 2B
 ```
 
-Tag IC: custom EM Microelectronic die (manufacturer code `0x16`, IC reference `0x17`). Memory: 66 blocks x 4 bytes = 264 bytes. Data is encrypted by the ASIC — raw dumps are high-entropy with only a cleartext header byte identifying the content ID.
+Tag IC: custom EM Microelectronic die (manufacturer code `0x16`, IC reference `0x17`). Memory: 66 blocks x 4 bytes = 264 bytes. Data is encrypted by the ASIC — raw dumps are high-entropy with a 5-byte cleartext header (`00 [payload_length] 01 0C 01`) where byte 1 is the payload length in bytes.
 
 ## Tools Summary
 
