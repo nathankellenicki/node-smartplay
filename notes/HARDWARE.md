@@ -1108,7 +1108,7 @@ NPM events are **strictly content-signature routed**. The event builder at `0x50
 
 ### Data (PAwR / BrickNet)
 
-Game state and events go over **BLE 5.4 PAwR (Periodic Advertising with Responses)**. Undocked bricks don't advertise via standard BLE — invisible to scanners.
+Game state and events go over **BLE 5.4 PAwR (Periodic Advertising with Responses)**. When PAwR is active (multi-brick tag placed), bricks advertise as "Smart Brick" on standard BLE alongside PAwR — but are **not connectable** by the Smart Assist app (only docked bricks are connectable). Undocked bricks with single-brick content do not advertise at all. The PAwR coordinator uses a **separate BLE address** from its standard advertising address.
 
 One brick is the **coordinator**, broadcasting periodic advertising trains. Others **synchronize** and respond in designated slots. Sessions are encrypted and authenticated.
 

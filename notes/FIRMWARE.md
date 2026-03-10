@@ -4,7 +4,7 @@
 
 ## Container Format
 
-Firmware images use a custom `~P11` container with a 104-byte WDX header:
+Firmware images use a custom `~P11` container with a 128-byte WDX header:
 
 ```
 Bytes 0–3:     Magic: ~P11 (0x7E503131)
@@ -12,16 +12,18 @@ Bytes 4–7:     Version (1)
 Bytes 8–11:    Flags
 Bytes 12–15:   Total file length
 Bytes 16–63:   ECDSA signature (48 bytes)
-Bytes 64–67:   Padding
-Bytes 68–71:   Padding
-Bytes 72–75:   Padding
-Bytes 76–79:   Padding
-Bytes 80–83:   Product (0=AudioBrick, 1=PanelCharger)
-Bytes 84–87:   Hardware version
-Bytes 88–91:   Upgrade version
-Bytes 92–95:   Segment table offset
-Bytes 96–99:   Segment table count
+Bytes 64–79:   Signature extra (16 bytes, per-code-version)
+Bytes 80–83:   Build ID (uint32, per-code-version)
+Bytes 84–87:   Reserved (always 0)
+Bytes 88–91:   Hardware version (3=hw3, 4=hw4)
+Bytes 92–95:   Code version (uint32, increases with code revision)
+Bytes 96–99:   Segment table offset (always 0x80)
+Bytes 100–103: Segment table count (always 2)
+Bytes 104–123: Build hash (20 bytes, SHA-1 of code, also in sub-header)
+Bytes 124–127: Build hash tail (uint32, purpose unclear)
 ```
+
+Bytes 16–83 (signature + extra + build ID) are tied to the **code segment version**, not to ROFS content. Firmware images with the same code but different ROFS (e.g. v0.66.1 vs v0.72.1 with shared fw-v2.29.0) have identical signatures.
 
 ## Segments
 
@@ -38,7 +40,7 @@ Raw ARC EM (ARCv2) machine code for the EM9305. **Not compressed** — runs dire
 | Size | 499,296 bytes (~488 KB) |
 | Flash address range | `0x00000000`–`0x00306000` |
 
-The sub-header at `0xB8` contains `\x7fP11` closing marker, a size field, SHA-1 hash, hardware version, and FF padding.
+The sub-header at `0xB8` is 64 bytes (`\x7fP11`, uint32 sub-header size=0x40, uint32 code length, 4-byte CRC32, 20-byte build hash matching outer header, uint32 hardware version, 24 bytes 0xFF padding).
 
 ### Segment 1 — ROFS
 
@@ -50,6 +52,8 @@ Zlib-compressed read-only filesystem.
 | Compressed size | 94,741 bytes |
 | Decompressed size | 165,372 bytes |
 | Marker | `ROFS` at segment descriptor |
+
+**Note:** The string `ROFS` appears twice in the full firmware file. The first occurrence at file offset `0xA0` is the **segment descriptor** in the outer container (file offset, compressed size, decompressed size). The second occurrence is the **ROFS filesystem header** inside the zlib-compressed data at `0x79F58`. You must decompress the segment data first, then parse the ROFS header below. The standalone `smartbrick_v0.72.1_rofs.bin` is already decompressed and can be parsed directly.
 
 ### ROFS Header (32 bytes)
 

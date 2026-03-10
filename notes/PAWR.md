@@ -176,11 +176,14 @@ Opcodes occupy byte 8 of the decrypted message. They appear to be **bit flags**,
 | `0x04` | Rare | Subscriber key response |
 | `0x06` | Rare | Game event (observed: symmetric pattern `06 ... 06`) |
 | `0x08` | Rare | Game event |
+| `0x0C` | Rare | Game event (3-brick session) |
 | `0x10` | ~4% | Game event (most common non-idle) |
 | `0x20` | Rare | Game event |
 | `0x30` | Rare | Game state with content data |
+| `0x3A` | Rare | Game event (3-brick session, rich payload) |
 | `0x40` | Rare | Game event |
-| `0x80` | Rare | Game event |
+| `0x60` | Rare | Unknown — 30-byte message with different cleartext tail (see below) |
+| `0x80` | ~2% | Game event |
 
 Note: The previously documented message types (0x2B play state, 0x1F control, 0x2E content) from the HARDWARE.md appear to be at a different protocol layer or use a different encoding. The wire-level opcodes observed in captures are the bit-flag values above.
 
@@ -262,10 +265,11 @@ These may represent actual state changes or radio bit errors.
 
 | File | Size | Duration | FEF3 Payloads | Notes |
 | --- | --- | --- | --- | --- |
-| `/tmp/smartbrick_capture.pcap` | 4.2 MB | ~20 min | 120 | Original session, primary analysis source |
-| `/tmp/smartbrick_coldstart.pcap` | 988 KB | ~3 min | 3 | Different boot session, same key verified |
-| `/tmp/smartbrick_keyexchange2.pcap` | 72 KB | ~25 sec | 0 | Targeted `--follow` capture (no PAwR subevents) |
-| `/tmp/smartbrick_phase1b.pcap` | — | ~5 sec | — | Address discovery capture |
+| `randomfiles/pawr_capture.pcap` | 1.5 MB | ~5.5 min | 27 | 3-brick session (Turret + X-Wing + A-Wing), same key verified |
+
+Previous captures (in `/tmp/`, since purged):
+- `smartbrick_capture.pcap` — 4.2 MB, ~20 min, 120 FEF3 payloads. Original 2-brick session, primary analysis source for key derivation.
+- `smartbrick_coldstart.pcap` — 988 KB, ~3 min, 3 FEF3 payloads. Different boot session, same key verified.
 
 ## Multi-Brick Play Flow (Example: X-Wing vs TIE Fighters)
 
