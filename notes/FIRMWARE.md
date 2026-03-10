@@ -69,18 +69,20 @@ Zlib-compressed read-only filesystem.
 
 ### File Table
 
-4 entries of 12 bytes each starting at offset 0x20. Format: `[CRC32:4][entry_offset:4][entry_size:4]`.
+4 entries of 12 bytes each starting at offset 0x20. Format: `[CRC32:4][content_offset:4][content_size:4]`.
 
-| # | Name | CRC32 | Entry Offset | Entry Size |
-| --- | --- | --- | --- | --- |
-| 0 | play | `0xC2CBD863` | `0x0048` | 22,770 |
-| 1 | audio | `0xE0613999` | `0x5982` | 132,649 |
-| 2 | animation | `0xE145EE5D` | `0x25FF3` | 9,487 |
-| 3 | version | `0x4671AE97` | `0x2854A` | 97 |
+**Offsets are relative** to 0x50 (end of ROFS header + file table). They point to **content start**, not the file header. Content sizes do not include the header.
 
-Entry sizes include an 80-byte per-file header: 8-byte metadata (CRC pair or `00000000 META`), 64-byte filename (null-padded ASCII), 8-byte content hash. File content follows the header.
+| # | Name | CRC32 | Content Offset | Content Size | Abs Content Start |
+| --- | --- | --- | --- | --- | --- |
+| 0 | play | `0xC2CBD863` | `0x0048` | 22,770 | `0x0098` |
+| 1 | audio | `0xE0613999` | `0x5982` | 132,649 | `0x59D2` |
+| 2 | animation | `0xE145EE5D` | `0x25FF3` | 9,487 | `0x26043` |
+| 3 | version | `0x4671AE97` | `0x2854A` | 97 | `0x2859A` |
 
-The tail of the ROFS contains a plaintext manifest with version and 64-bit hashes of each file:
+Each file is preceded by a 72-byte header: 64-byte filename (null-padded ASCII) + 8-byte content hash. Files pack contiguously (header → content → header → content → ...) with a single `0xFF` trailing byte.
+
+The `version` file is a plaintext manifest with the firmware version and 64-bit hashes of each file:
 ```
 0.72.1
 play.bin:0x97C6D1D9024B4427

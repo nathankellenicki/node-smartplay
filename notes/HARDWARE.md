@@ -164,25 +164,25 @@ Block 15: A9 96 46 57    Block 31: 3C C5 CB C7
 
 **171 bytes of data** (blocks 0–42).
 
-**Tag 4: Leia** — UID `E0:16:5C:01:1F:B7:A4:70`
+**Tag 4: Leia** — Content ID `0x9E` (verified against second Leia minifig)
 
 ```
-Block  0: 00 9E 01 0C    Block 16: E7 1D AE D2    Block 32: 68 7B 7A 4A
-Block  1: 01 48 12 5F    Block 17: 4B 8A BC 1F    Block 33: D2 B2 E2 F3
-Block  2: 4E B3 0B 49    Block 18: D1 DC 93 B3    Block 34: 82 0F 37 C2
-Block  3: F3 76 E9 6F    Block 19: 7C 8B 63 4B    Block 35: 02 12 D3 58
-Block  4: A8 44 DE 7D    Block 20: 69 FD C4 B0    Block 36: AD 53 A1 6A
-Block  5: DE C1 FC 45    Block 21: FD BC 5D E7    Block 37: 3E 1B 73 D4
-Block  6: 92 A2 E9 D7    Block 22: E2 2C 98 F2    Block 38: D9 62 94 E1
-Block  7: 9C 46 B8 F1    Block 23: 97 B2 8D EB    Block 39: 98 95 00 00
-Block  8: A0 FE 43 0A    Block 24: 93 58 71 75    Blocks 40-65: 00 00 00 00
-Block  9: EE 8B 31 A2    Block 25: 0E 7E 69 2B
-Block 10: 6F 6F A3 05    Block 26: CE AA 93 43
-Block 11: DD 78 21 D6    Block 27: 5B E9 2C 45
-Block 12: BD 33 1D C2    Block 28: C3 68 F2 D3
-Block 13: 04 21 2D EE    Block 29: E2 79 C3 15
-Block 14: 69 98 E3 F8    Block 30: D5 82 BC FE
-Block 15: 1C 6B 8E 9D    Block 31: D8 55 D1 37
+Block  0: 00 9E 01 0C    Block 16: FB D5 81 C2    Block 32: 90 D4 5A D3
+Block  1: 01 0B 61 49    Block 17: 43 0D 16 F9    Block 33: 28 74 4B D6
+Block  2: 1A 35 D3 D0    Block 18: E5 6B 58 21    Block 34: 06 C7 09 94
+Block  3: D0 16 B3 B4    Block 19: 0B D3 74 81    Block 35: 12 D5 7E 99
+Block  4: 54 2A 5E 43    Block 20: A2 5B 77 92    Block 36: 94 C8 8C 85
+Block  5: 88 D4 FE B3    Block 21: DD 63 4D AB    Block 37: 1F 5B E3 EA
+Block  6: AA 22 BE 60    Block 22: 38 EC 92 9C    Block 38: 17 74 EE 93
+Block  7: 1A 1E 1F 98    Block 23: 77 13 43 D6    Block 39: FD C4 00 00
+Block  8: 34 D4 3F FA    Block 24: B6 87 D4 BE    Blocks 40-65: 00 00 00 00
+Block  9: 6F BA 65 52    Block 25: DA 5C 79 67
+Block 10: FF 1F 5B FE    Block 26: B0 6E 0A 0D
+Block 11: 5B 2D 2D 8A    Block 27: FE 7D 59 FB
+Block 12: F9 B8 43 0E    Block 28: 69 9A 43 63
+Block 13: 05 32 1F 7F    Block 29: 2C 05 0C 27
+Block 14: 7C 27 0C 5F    Block 30: 9C E4 BD 5D
+Block 15: 5E 7F 83 9C    Block 31: A2 DE 9C A2
 ```
 
 **Tag 5: R2-D2** — UID `E0:16:5C:01:26:19:58:B2`, Content ID `0x4A`
