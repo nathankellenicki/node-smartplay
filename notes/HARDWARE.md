@@ -65,12 +65,31 @@ Response: 00 0F BE 18 84 25 01 5C 16 E0 00 00 00 41 03 17
 
 #### Reading Commands
 
-Standard ISO 15693 reads work without any Login or authentication:
-- `02 20 XX` — Read Single Block (block XX)
-- `02 23 XX YY` — Read Multiple Blocks (start XX, count YY)
-- `02 2B` — Get System Information
+Standard ISO 15693 reads work without any Login or authentication. No custom commands (`0xA0`–`0xDF`) or Login (`0xE4`) are needed.
 
-No custom commands (`0xA0`–`0xDF`) or Login (`0xE4`) are needed.
+**Full dump — single command (NFC Tools Pro → Advanced → ISO 15693):**
+
+```
+02 23 00 41
+```
+
+Reads all 66 blocks in one shot (start=0x00, count-1=0x41 → 66 blocks).
+
+**If the reader caps multi-block reads at 32 blocks:**
+
+```
+02 23 00 1F           (32 blocks: 0–31)
+02 23 20 1F           (32 blocks: 32–63)
+02 23 40 01           (2 blocks: 64–65)
+```
+
+**Other commands:**
+
+| Command | Description |
+| --- | --- |
+| `02 20 XX` | Read Single Block (block XX, 0x00–0x41) |
+| `02 23 XX YY` | Read Multiple Blocks (start XX, count-1 YY) |
+| `02 2B` | Get System Information (UID, memory size, IC ref) |
 
 #### Raw Memory Dumps — Identity Tags (Smart Minifigs)
 
@@ -312,7 +331,7 @@ X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 
 #### Encrypted Region (bytes 5+)
 
-From byte 5 onward, tags with different payload sizes are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with AES or similar block cipher encryption.
+From byte 5 onward, tags with different payload sizes are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with strong encryption. Payload sizes are not multiples of any standard block cipher block size (AES=16, DES=8), indicating a **stream cipher** or counter-mode block cipher. The tag IC reference 0x17 matches the EM Microelectronic EM4237, which implements **Grain-128A** (ISO/IEC 29167-13) — a lightweight stream cipher with 128-bit key and 96-bit IV. This is the leading theory for the tag encryption algorithm (see Encryption Investigation section below).
 
 #### UID Independence
 
@@ -342,9 +361,11 @@ LEGO's tag security operates at **two layers**:
 
    The 16-byte key and 5-byte parameter reside in the config struct at `0x80DCC8` which is populated from ROFS config data during boot. The claim that hardware OTP is involved is plausible (the key may be per-brick unique) but not directly confirmed from disassembly alone — it's possible the key is static across bricks if sourced only from ROFS. The purpose is to authenticate the EM9305 to the ASIC, preventing a rogue processor from commanding the ASIC's tag reader and decryption engine.
 
-2. **Tag data encryption** (algorithm unknown, in ASIC silicon): Raw EEPROM content is encrypted. The ASIC decrypts it after reading, before passing to the EM9305. The decryption key is in the ASIC's internal logic — not accessible from the EM9305 firmware or via JTAG. All bricks share the same decryption capability (tags work on any brick).
+2. **Tag data encryption** (in ASIC silicon): Raw EEPROM content is encrypted. The ASIC decrypts it after reading, before passing structured TLV data to the EM9305. The decryption key is in the ASIC's internal logic — not accessible from the EM9305 firmware or via JTAG. All bricks share the same decryption capability (tags work on any brick). The encryption algorithm is **not AES-CCM** — the AES-CCM functions in the EM9305 firmware are for BrickNet PAwR encryption and EM9305↔ASIC mutual authentication. The tag IC reference 0x17 matches the EM4237 (Grain-128A stream cipher, ISO/IEC 29167-13), making Grain-128A the leading candidate algorithm (see Encryption Investigation below).
 
-Tag access itself is **completely open** — no password, no page protection, no privacy mode. Anyone with an NFC reader can dump the raw EEPROM. But the data is meaningless without the ASIC's decryption key.
+Tag access itself is **completely open** — no password, no page protection, no privacy mode. Anyone with an NFC reader can dump the raw EEPROM. But the data is meaningless without the decryption key.
+
+**Note on AES-CCM misattribution:** The marcinruszkiewicz/lego_smart_brick research found AES-CCM strings ("AES-CCM context create failed", "AES_CCM_DecryptAndMAC failed") in the EM9305 firmware and attributed them to tag decryption. However, the EM9305 never sees encrypted tag data — the ASIC handles decryption internally and deposits structured TLV data into EM9305 registers. The EM9305's AES hardware (registers `0x808800–0x8089FF`, key at `0x808904`) is used for BrickNet PAwR session encryption and EM9305↔ASIC mutual authentication, not tag decryption.
 
 LEGO calls this "near-field magnetic communication". They claim the brick can detect which face a tag is on with millimeter precision (**NFC positioning** — per Wired article, not independently verified).
 
@@ -430,13 +451,16 @@ Tag removal is **not instant**. The firmware has a 20-tick grace period (~320ms 
 
 ### Tag Security
 
-Multi-layer validation, **not crypto-based** (no AES/HMAC/signature in tag context — those are only used for BrickNet session encryption):
+**Post-decryption validation** in the EM9305 firmware is **minimal** — the firmware performs zero cryptographic checks on decrypted tag data. All security is in the ASIC:
 
-1. **CRC32 check** over tag data
-2. **Security format validation** — multiple formats supported, format-dependent length
-3. **Security info validation** — presence and length checks
-4. **Payload verification** — content integrity check
-5. **Final verification** — overall tag accepted or rejected
+- **ISO 15693 CRC-16:** Handled by ASIC hardware (no CRC functions in EM9305 firmware for tag data — confirmed by exhaustive search, no CRC-16/CRC-32 polynomial constants found)
+- **Encryption + integrity:** Handled by ASIC silicon (algorithm believed to be Grain-128A with optional MAC, see Encryption Investigation below)
+- **Format validation:** ASIC checks cleartext header format (payload length, `01 0C`, format byte `01`) before decryption — invalid headers cause silent rejection (no red flash)
+- **Firmware-side:** Only a dual-read complement check in the scan loop at `0x67634` (reads twice, verifies consistency) — not a cryptographic check
+
+The EM9305 trusts whatever the ASIC deposits into its registers. If the ASIC accepts a tag, the firmware uses it unconditionally.
+
+**Note:** An earlier version of this document described a 5-step "CRC32 + security format + payload verification" chain. This was speculative and has been corrected — there is no CRC32 tag data validation in the EM9305 firmware, and the actual validation mechanism is inside the ASIC.
 
 ### Tag Reading Pipeline
 
@@ -639,14 +663,14 @@ This parser feeds into the tag content structure at `0x80B944`, which is the con
 
 The EM9305 firmware contains **no CRC-16 or CRC-32 calculation** for tag data (confirmed by exhaustive search — no CRC constants or functions found). ISO 15693 CRC-16 is handled entirely by the ASIC hardware. The `0xDEADDD00` value found in the code is the **crash/fault reporting magic** (stored at `0x80F470` by the assert handler at `0x3B1D4`), not a tag data sentinel or integrity check.
 
-### Tag IC Identification: Custom EM Microelectronic Die
+### Tag IC Identification: EM4237 (Grain-128A)
 
-The LEGO Smart Tags use a **custom ISO 15693 IC** fabricated by EM Microelectronic. It is **not** an off-the-shelf EM4233SLIC or EM4233.
+The LEGO Smart Tags use an EM Microelectronic ISO 15693 IC with IC reference **0x17**, matching the **EM4237** — EM Micro's ISO 15693 chip with **Grain-128A** (ISO/IEC 29167-13) encryption support. It is **not** an EM4233SLIC (IC ref 0x02/0x16).
 
 | Property | Value |
 | --- | --- |
 | Manufacturer | EM Microelectronic (code `0x16`) |
-| IC Reference | **`0x17`** (custom — EM4233SLIC=`0x02`, EM4233=`0x09`) |
+| IC Reference | **`0x17`** (matches **EM4237** — EM4233SLIC=`0x02`, EM4233=`0x09`) |
 | Memory | **66 blocks × 4 bytes = 264 bytes** (vs 32 blocks for EM4233SLIC) |
 | Frequency | 13.56 MHz (ISO/IEC 15693) |
 | Access control | **None** — no password, no page protection, no privacy mode |
@@ -690,6 +714,259 @@ rpc_handlers_tag_int.c
 ```
 
 Debug strings were stripped in production (v0.65+) but all functional code is present — confirmed by SPI register accesses, tag UID comparison logic, interrupt handlers, and the 8-case event dispatch jump table in v0.72.1. The tag ASIC driver source is simply `asic.c` (not `tag_asic.c`).
+
+## Tag Encryption Investigation
+
+> Status: Active investigation (2026-03-17). Theory is Grain-128A; not yet confirmed.
+
+### Algorithm Identification
+
+The tag encryption algorithm runs inside the DA000001-01 ASIC. It is **not** AES-128-CCM — the AES-CCM functions in the EM9305 firmware are for BrickNet PAwR encryption and EM9305↔ASIC chip authentication.
+
+**Evidence for Grain-128A (ISO/IEC 29167-13):**
+
+1. Tag IC reference **0x17** matches EM Microelectronic's **EM4237**, which implements Grain-128A
+2. Tag memory layout (66 blocks × 4 bytes) matches EM4237
+3. Payload sizes (69–166 bytes of encrypted data) are **not multiples of any block cipher block size** — consistent with a stream cipher
+4. EM Microelectronic uses Grain-128A across their ISO 15693 product line (EM4237, EM4333)
+5. Grain-128A is a lightweight LFSR+NFSR stream cipher feasible for a small mixed-signal ASIC
+
+**Grain-128A parameters:** 128-bit key, 96-bit IV (12 bytes), keystream XOR'd with plaintext, optional 32-bit MAC.
+
+### Hypothesized Tag Layout
+
+```
+[00 LEN 01 0C] [01] [IV: 12 bytes] [ciphertext] [MAC: 0-8 bytes]
+ └─cleartext─┘  fmt   └────────── encrypted payload ──────────┘
+```
+
+- The first 12 bytes after the format byte (`01`) are a per-content IV — different for every tag, explaining why XOR analysis of ciphertext pairs shows no shared keystream
+- Same content → same IV → same ciphertext (deterministic, UID-independent)
+- The MAC (if present) is the last 4-8 bytes of the payload
+
+### XOR Analysis Results (14 tag dumps)
+
+Exhaustive pairwise XOR analysis across 14 unique tag dumps (91 pairs) found:
+
+- **No shared keystream** at any ciphertext offset (4-60), ruling out a static nonce
+- **No structural constants** (TLV headers, type bytes) at any fixed position
+- **No correlation** between same-type tags (identity-identity or item-item pairs)
+- Entropy of XOR results: ~4.85 bits/byte across all pairs, indistinguishable from random
+
+This is consistent with **per-tag IV** encryption (each tag uses a unique IV → unique keystream). It rules out a fixed/static nonce.
+
+### NFC Metadata Analysis
+
+All observable NFC metadata is identical across tags of different content:
+
+| Field | Same across tags? | Notes |
+| --- | --- | --- |
+| UID | Different per chip | Ruled out: same content + different UIDs → identical ciphertext |
+| System Info (`0x2B`) | Identical | No per-tag variation |
+| Block Security Status (`0x2C`) | Identical (`01` for all 66 blocks) | All blocks write-locked |
+| AFI / DSFID | Identical (`0x00`) | No variation |
+| Blocks beyond 65 | None exist | Tag is exactly 66 blocks |
+
+The per-content diversification (IV) must be embedded in the payload data itself — likely the first 12 bytes after the cleartext header. The IV is unique per **content type** (each of the 14 known contents has a different IV), but shared across all physical tags of the same content (two Luke minifigs with different UIDs have identical IV and ciphertext).
+
+### Plaintext Structure (Validated Model)
+
+The plaintext consists of an **identity block** + variable number of **resource reference records**:
+
+**Record sizes (validated against 7/15 tags with exact match):**
+
+| Record | Size | Contents |
+| --- | --- | --- |
+| identity_block (item tags) | 51 bytes | Content identity + item scan resource ref |
+| identity_block (identity tags) | 57 bytes | Content identity + identity scan resource ref |
+| timer_ref | 6 bytes | Timer/idle script reference (compact sub-record) |
+| button_ref | 33 bytes | Button/IMU script reference (full resource ref with bank data) |
+| npm_ref | 44-58 bytes | NPM proximity reference (variable, carries positioning params) |
+
+**Tag type decomposition:**
+
+| Tag | PT bytes | Model | Match |
+| --- | --- | --- | --- |
+| R2-D2 | 57 | 57 (id_block only) | ✓ |
+| Fuel Cargo | 84 | 51 + 33 (item + button) | ✓ |
+| X-Wing | 90 | 51 + 6 + 33 (item + timer + button) | ✓ |
+| TIE Fighter | 90 | 51 + 6 + 33 | ✓ |
+| Falcon | 90 | 51 + 6 + 33 | ✓ |
+| A-Wing | 90 | 51 + 6 + 33 | ✓ |
+| Han Solo | 96 | 57 + 6 + 33 (id + timer + button) | ✓ |
+| Hyperdrive | 92 | 90 + 2 extra | ~close |
+| Chewbacca | 99 | 96 + 3 extra | ~close |
+| C-3PO | 101 | 96 + 5 extra | ~close |
+| Lightsaber | 109 | 90 + 19 extra | ~close |
+| Luke | 140 | 96 + 44 (npm) | ✓ |
+| Leia | 141 | 96 + 45 (npm) | ✓ |
+| Vader | 152 | 96 + 56 (npm) | ✓ |
+| Palpatine | 154 | 96 + 58 (npm) | ✓ |
+
+**Gameplay observations confirming capabilities:**
+- All ship tags (X-Wing, TIE, Falcon, A-Wing): PAwR combat (timer), IMU swoosh sounds (button)
+- Imperial Turret tags: PAwR combat (timer), IMU rotation sounds (button) — two variants at 105 and 108 bytes (don't fit the 90-byte ship model exactly)
+- Fuel Cargo: IMU sloshing sounds (button), no PAwR, no idle timer
+- Lightsaber: responds to shaking (button)
+- R2-D2: minimal interaction (identity scan only)
+
+**Note on variable record sizes:** Turret A (88 PT), Turret B (91 PT), and Hyperdrive (92 PT) don't match the ship model (90 PT) despite having the same capabilities. The identity_block size varies by 1-2 bytes between different item contents — likely due to variable-length content identity encoding (compact vs extended format controlled by a flag byte at `0x4FC58`).
+
+### Known Plaintext Bytes
+
+**For the 4 ship tags** (X-Wing, TIE, Falcon, A-Wing — all 90-byte plaintext):
+
+Plaintext layout: `[identity_block: 0-50] [timer_ref: 51-56] [button_ref: 57-89]`
+
+**Firm known bytes (value known, shared across all 4 ships):**
+
+Offsets corrected via full dispatch chain trace: sub-record iterator (`0x10706`) → handler (`0xEADC`) → TLV reassembly (`0x4EC58`) → dispatch (`0x523A8`) → resource ref extraction (`0x52454`). The offsets at `0x52454` are in the **reassembled TLV buffer** (which adds 8 bytes of framing), not the raw plaintext. Raw sub-record offsets are 1 position earlier for most fields.
+
+| PT Offset | Value | Source |
+| --- | --- | --- |
+| 53 | `0x03` | timer sub-record length (3-byte payload) |
+| 54 | `0x18` | timer content_ref lo (script #42, param=24) |
+| 55 | `0x00` | timer content_ref hi |
+| 59 | `0x10` | button sub-record length (16-byte payload) |
+| 60 | `0x04` | button framing byte (from `0xEADC` dispatch: payload[0]==4) |
+| 63 | `0x02` | button inner_type (resource ref, from `0xEADC` inner type dispatch) |
+| 64 | `0x12` | button tag_byte (raw sub-record offset +7, not reassembled +8) |
+| 66 | `0x08` | button sub_type lo (must be 0x0008) |
+| 67 | `0x00` | button sub_type hi |
+| 69 | `0x00` | button content_ref hi (all 7 button params < 256) |
+
+**Raw sub-record format for resource refs (from dispatch trace):**
+```
+Offset 0: sub-record type (u8)
+Offset 1: sub-record param (s8)
+Offset 2: sub-record length (u8) = 16 for resource refs
+Offset 3: framing byte = 0x04
+Offset 4-5: inner length (u16 BE)
+Offset 6: inner type = 0x02 (resource ref)
+Offset 7: tag_byte = 0x12
+Offset 8: unknown
+Offset 9: sub_type lo = 0x08
+Offset 10: sub_type hi = 0x00
+Offset 11: content_ref lo
+Offset 12: content_ref hi
+Offset 13: bank_index lo
+Offset 14: bank_index hi (≤ 0x01, since bank_index ≤ 499)
+Offset 15: bank_ref lo
+Offset 16: bank_ref hi
+Offset 17: audio_ref lo
+Offset 18: audio_ref hi
+Total: 19 bytes (3 header + 16 payload)
+```
+
+**Constrained bytes:**
+
+| PT Offset | Constraint | Source |
+| --- | --- | --- |
+| 68 | One of: `0x68, 0x48, 0x70, 0x50, 0x58, 0x40, 0x60` | Button content_ref lo (7 button script params) |
+| 71 | `0x00` or `0x01` | bank_index hi (must be ≤ 499) |
+
+**Total constraints:** 10 firm bytes × 4 tags = **320 bits** of keystream constraint on the 128-bit key. The key is massively over-determined.
+
+### Keystream Bytes Derived from Known Plaintext
+
+For each firm known byte, `keystream[i] = ciphertext[i] ⊕ plaintext[i]`:
+
+| Position | X-Wing KS | TIE KS | Falcon KS | A-Wing KS |
+| --- | --- | --- | --- | --- |
+| 53 | `0x07` | `0xDD` | `0x79` | `0xF5` |
+| 54 | `0x00` | `0x78` | `0xF5` | `0x85` |
+| 55 | `0x02` | `0x9B` | `0xD4` | `0xF0` |
+| 59 | `0x51` | `0x78` | `0x09` | `0x18` |
+| 60 | `0xCD` | `0x14` | `0xC7` | `0xB3` |
+| 63 | `0xAC` | `0xCE` | `0x21` | `0xB7` |
+| 64 | `0xD3` | `0xE2` | `0xBF` | `0xF7` |
+| 66 | `0xD4` | `0x3D` | `0xD1` | `0x0B` |
+| 67 | `0x92` | `0x1B` | `0x40` | `0x31` |
+| 69 | `0x8E` | `0xBC` | `0x94` | `0xE6` |
+
+These 40 keystream bytes must be producible by Grain-128A(key, IV) at the corresponding bit positions for each tag's IV. Any correct key candidate must satisfy ALL 40 constraints simultaneously.
+
+### Analysis Scripts
+
+- `examples/ccm-nonce-analysis.js` — XOR analysis of all tag pairs (91 pairs × 3 offsets)
+- `examples/ccm-same-length-analysis.js` — Same-length item triplet analysis
+- `examples/ccm-known-constants-search.js` — Search for TLV constants at all positions
+- `examples/ccm-structure-search.js` — Assumption-free structure search
+- `examples/grain128a-iv-test.js` — Grain-128A IV hypothesis and size analysis
+- `examples/grain128a/verify_grain.c` — Grain-128A C reference implementation
+- `examples/grain128a/grain128a.c` — Grain-128A core (verified against Noxet/grain128a)
+- `examples/grain128a/known_plaintext.js` — Initial known plaintext compilation
+- `examples/grain128a/known_bytes_final.js` — Final known bytes with keystream derivation
+- `examples/grain128a/plaintext_map.js` — Full plaintext byte map for ship tags
+- `examples/grain128a/plaintext_template_v2.js` — Plaintext size cross-validation
+- `examples/grain128a/validate_offsets.js` — Fixed-size record validation (negative result)
+- `examples/grain128a/validate_offsets2.js` — Variable-size record analysis with gameplay data
+- `examples/grain128a/awing_analysis.js` — A-Wing tag analysis (4 same-structure tags)
+- `examples/grain128a/sat_solver.py` — z3 SAT solver (timed out)
+- `examples/grain128a/sat_solver_flat.py` — Flat-encoding SAT solver (timed out)
+- `examples/grain128a/sat_feasibility.py` — SAT feasibility test (32 rounds OK, 64+ timeout)
+- `examples/grain128a/sat_4tags.py` — z3 solver with 4 tags (killed after 2+ hours)
+- `examples/grain128a/cms_solver.py` — CryptoMiniSat solver with native XOR clauses (killed after 2+ hours)
+
+### SAT Solver Attempts
+
+**z3 (general-purpose SMT solver):**
+
+| Init Rounds | Tags | Constraint | Result | Time |
+| --- | --- | --- | --- | --- |
+| 32 | 1 | 40 bits | SAT (wrong key) | 12s |
+| 64 | 1 | 40 bits | Timeout | >120s |
+| 256 | 1 | 40 bits | Timeout | >30min |
+| 256 | 4 | 320 bits | Killed | >2 hours |
+
+**CryptoMiniSat (crypto-optimized, native XOR clauses):**
+
+| Tags | Variables | Constraint | Result | Time |
+| --- | --- | --- | --- | --- |
+| 4 | ~90K | 320 bits | Killed | >2 hours |
+
+CryptoMiniSat was run with 4 threads and native XOR clause support (Gaussian elimination). The ~90K variable instance with 320 bits of keystream constraint did not solve within 2 hours.
+
+**Conclusion:** Full 256-round Grain-128A resists both general-purpose (z3) and crypto-optimized (CryptoMiniSat) SAT solvers, even with 320 bits of known keystream across 4 independent IVs. The cipher's ~18,000 AND operations across 256 initialization rounds create a nonlinear core that SAT search cannot efficiently penetrate. This is consistent with Grain-128A's design goals — it was vetted as an eSTREAM portfolio cipher specifically for resistance to algebraic and SAT-based attacks.
+
+### Open Questions
+
+1. **Is it actually Grain-128A?** — Cannot confirm without the key. The IC reference 0x17 matching EM4237 is strong evidence but not proof. The tag data properties (stream cipher, per-content IV, non-block-aligned sizes) are all consistent.
+2. **MAC length** — Grain-128A supports 0-32 bit MAC. The header payload length includes the 4-byte block 0 header in its count (confirmed: all 14 tags show consistent 4-byte offset). MAC length is unknown.
+3. **Post-decryption integrity check** — Whether the ASIC uses Grain-128A MAC (cryptographic, requires key) or a simpler check (CRC32, format validation) cannot be determined from the EM9305 side. The ASIC handles all validation.
+4. **Key location** — The 128-bit key is shared across all bricks (all bricks decrypt all tags). Likely in ASIC OTP or a shared silicon constant. Not in EM9305 firmware or ROFS.
+
+### Status: BLOCKED
+
+**Custom tag creation is not feasible with current approaches.** The encryption key cannot be recovered through:
+
+| Approach | Result | Notes |
+| --- | --- | --- |
+| Firmware analysis | Dead end | ASIC handles decryption internally; EM9305 never sees key or encrypted data |
+| XOR cryptanalysis (14 tag dumps) | Dead end | Per-content IV produces independent keystreams; no shared keystream |
+| NFC metadata analysis | Dead end | All observable fields (system info, block security, AFI/DSFID) identical across tags |
+| BLE register probing | Dead end | Decrypted tag data not exposed over any BLE register |
+| PAwR traffic analysis | Dead end | Content identity not transmitted in BrickNet messages |
+| z3 SAT solver | Timeout | Cannot handle >64 init rounds |
+| CryptoMiniSat (native XOR) | Timeout | ~90K variables, 320-bit constraint, killed after 2+ hours |
+| Brute force | Infeasible | 2^128 key space |
+
+**Known plaintext collected:** 10 firm bytes × 4 tags = 320 bits of keystream constraint (key uniquely determined). The problem is purely computational — inverting 256 nonlinear init rounds.
+
+**Theoretical remaining paths (not attempted):**
+- Optimized guess-and-determine attack (~2^64 complexity, feasible on cloud cluster over weeks/months)
+- Academic algebraic cryptanalysis (Gröbner basis, requires specialist expertise)
+- Hardware side-channel attack on ASIC (power analysis during tag read)
+- Key extraction from external source (LEGO backend, developer tools, silicon decapping)
+
+**Tag cloning** (byte-perfect copy to blank ISO 15693 stickers) works and is the only viable method for tag duplication without the key. All 17 known tag dumps (15 unique + 2 turret variants) are documented.
+
+**Available for future work:**
+- Working Grain-128A C implementation (verified against reference)
+- 17 tag dumps with 6 unique IVs confirmed for PAwR combat ships
+- Full dispatch chain trace from ASIC sub-records through TLV reassembly to resource ref extraction
+- Detailed plaintext structure model validated against 7+ tags
+- All analysis scripts in `examples/grain128a/` and `examples/ccm-*.js`
 
 ## Play Engine
 

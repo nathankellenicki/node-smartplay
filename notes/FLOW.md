@@ -14,11 +14,11 @@ The brick is shaken to wake up. No tag is present, so no scripts are loaded and 
 
 ### 2. Tag Placed
 
-A Smart Tag (minifig or tile) is brought near the brick. The tag's EEPROM contains 74–171 bytes of AES-128-CCM encrypted data, preceded by a 5-byte cleartext header (`00 [payload_length] 01 0C 01`).
+A Smart Tag (minifig or tile) is brought near the brick. The tag's EEPROM contains 74–171 bytes of encrypted data, preceded by a 5-byte cleartext header (`00 [payload_length] 01 0C 01`). The encryption algorithm is unknown — it runs entirely inside the DA000001-01 ASIC. The tag IC is EM Microelectronic IC reference 0x17 (matching the EM4237, which uses Grain-128A stream cipher), suggesting the encryption may be **Grain-128A** (ISO/IEC 29167-13) with a 128-bit key and 96-bit IV — but this is unconfirmed. Earlier references to "AES-128-CCM" were a misattribution; the AES-CCM functions in the EM9305 firmware are used for BrickNet PAwR session encryption and EM9305↔ASIC mutual authentication, not tag data decryption.
 
 ### 3. ASIC Reads and Decrypts
 
-The DA000001-01 ASIC handles the ISO 15693 RF protocol autonomously — inventory, anti-collision, and block reads. It decrypts the tag payload using a key held in silicon (hardware register `0x808904`, not accessible from firmware). The cleartext header byte 1 tells the ASIC how many bytes to decrypt.
+The DA000001-01 ASIC handles the ISO 15693 RF protocol autonomously — inventory, anti-collision, and block reads. It decrypts the tag payload internally using a key held in silicon (not accessible from firmware). The cleartext header byte 1 tells the ASIC how many bytes to decrypt. The EM9305 firmware never sees the encrypted data or the cleartext header — it receives only the structured decrypted output.
 
 The decrypted output is structured as a **type 0x22 TLV container** containing multiple sub-records. The ASIC deposits this into the EM9305's memory-mapped register space:
 - 4 × 20-byte blocks at registers 0x04–0x07 → RAM `0x8078A8`–`0x8078F8`

@@ -213,20 +213,61 @@ Authenticated endpoints require a JWT from LEGO ID (`identity.lego.com`, OAuth c
 
 ## 8. NFC Tag Scanning
 
-Tags scanned using a standard NFC phone with ISO 15693 support:
+Smart Tags use **ISO/IEC 15693** (NFC-V, 13.56 MHz). Tag IC: custom EM Microelectronic die (manufacturer code `0x16`, IC reference `0x17`). Memory: 66 blocks × 4 bytes = 264 bytes. Data is encrypted by the ASIC — raw dumps are high-entropy with a 5-byte cleartext header (`00 [payload_length] 01 0C 01`) where byte 1 is the payload length in bytes.
+
+Tags are **completely open** — no authentication, password, or page protection. Standard ISO 15693 Read commands work from any NFC phone.
+
+### Using NFC Tools Pro (iOS/Android)
+
+In **Advanced → ISO 15693** raw command mode:
+
+**Full dump (single command):**
 
 ```
-# Read Single Block
-02 20 XX              (XX = block number)
-
-# Read Multiple Blocks
-02 23 XX YY           (XX = start block, YY = count-1)
-
-# Get System Info
-02 2B
+02 23 00 41
 ```
 
-Tag IC: custom EM Microelectronic die (manufacturer code `0x16`, IC reference `0x17`). Memory: 66 blocks x 4 bytes = 264 bytes. Data is encrypted by the ASIC — raw dumps are high-entropy with a 5-byte cleartext header (`00 [payload_length] 01 0C 01`) where byte 1 is the payload length in bytes.
+This reads all 66 blocks (0x00–0x41) in one shot. The second parameter is count minus 1 (0x41 = 65, so 65 + 1 = 66 blocks).
+
+**If the reader caps multi-block reads at 32 blocks, split into 3 commands:**
+
+```
+02 23 00 1F           (32 blocks: 0–31)
+02 23 20 1F           (32 blocks: 32–63)
+02 23 40 01           (2 blocks: 64–65)
+```
+
+**Other useful commands:**
+
+```
+02 2B                 Get System Info (UID, block count, IC reference)
+02 20 XX              Read Single Block (XX = block number, 0x00–0x41)
+```
+
+### ISO 15693 Command Format
+
+| Byte(s) | Meaning |
+| --- | --- |
+| `02` | Flags: high data rate, no addressed mode |
+| `20` | Read Single Block command |
+| `23` | Read Multiple Blocks command |
+| `2B` | Get System Information command |
+| `XX` | Start block number |
+| `YY` | Number of blocks minus 1 |
+
+### Known Tag Sizes
+
+| Tag Type | Payload | Blocks Used |
+| --- | --- | --- |
+| R2-D2 (tile acting as Identity) | 74 bytes | 0–18 |
+| X-Wing (tile) | 107 bytes | 0–26 |
+| Lightsaber (tile) | 126 bytes | 0–31 |
+| Luke Skywalker (minifig) | 157 bytes | 0–39 |
+| Leia (minifig) | 158 bytes | 0–39 |
+| Vader (minifig) | 169 bytes | 0–42 |
+| Palpatine (minifig) | 171 bytes | 0–42 |
+
+Remaining blocks are zero-filled. Encryption is NOT UID-diversified — duplicate tags with different UIDs contain identical EEPROM data.
 
 ## Tools Summary
 
@@ -242,4 +283,4 @@ Tag IC: custom EM Microelectronic die (manufacturer code `0x16`, IC reference `0
 | Python 3 (`struct`, `zlib`) | Parse firmware headers, decompress ROFS |
 | Wireshark | Inspect BLE HCI captures |
 | `curl` | Probe backend API endpoints |
-| NFC phone (ISO 15693) | Scan Smart Tag EEPROM data |
+| NFC Tools Pro (iOS/Android) | Scan Smart Tag EEPROM via ISO 15693 raw commands |
