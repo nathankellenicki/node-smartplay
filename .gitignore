@@ -1,4 +1,15 @@
 node_modules/
 dist/
 tsconfig.tsbuildinfo
-randomfiles/
+
+# Research — large binary files
+research/firmware_files/
+research/audio_clips/
+research/captures/
+research/connectkit/
+research/scripts/
+research/SmartAssist.apk.blah
+research/*.json
+research/*.js
+firmware/*
+.DS_Store

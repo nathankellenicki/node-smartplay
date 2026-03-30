@@ -14,7 +14,7 @@ The brick is shaken to wake up. No tag is present, so no scripts are loaded and 
 
 ### 2. Tag Placed
 
-A Smart Tag (minifig or tile) is brought near the brick. The tag's EEPROM contains 74–171 bytes of encrypted data, preceded by a 5-byte cleartext header (`00 [payload_length] 01 0C 01`). The encryption algorithm is unknown — it runs entirely inside the DA000001-01 ASIC. The tag IC is EM Microelectronic IC reference 0x17 (matching the EM4237, which uses Grain-128A stream cipher), suggesting the encryption may be **Grain-128A** (ISO/IEC 29167-13) with a 128-bit key and 96-bit IV — but this is unconfirmed. Earlier references to "AES-128-CCM" were a misattribution; the AES-CCM functions in the EM9305 firmware are used for BrickNet PAwR session encryption and EM9305↔ASIC mutual authentication, not tag data decryption.
+A Smart Tag (minifig or tile) is brought near the brick. The tag's EEPROM contains 74–171 bytes of encrypted data, preceded by a 5-byte cleartext header (`00 [payload_length] 01 0C 01`). The data is protected by **full authenticated encryption (AEAD)** — empirically confirmed that modification of any single byte causes silent rejection. The encryption algorithm is **unknown** — it runs entirely inside the DA000001-01 ASIC. It behaves like an authenticated stream cipher with a per-content IV. The tag IC manufacturer is irrelevant (clones work on NXP ICODE SLIX2). Earlier references to "AES-128-CCM" were a misattribution; the AES-CCM functions in the EM9305 firmware are for BrickNet PAwR session encryption and EM9305↔ASIC mutual authentication, not tag data decryption.
 
 ### 3. ASIC Reads and Decrypts
 

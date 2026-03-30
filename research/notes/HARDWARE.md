@@ -331,7 +331,7 @@ X-Wing:          00     6B      01      0C      01      107 bytes   0–26
 
 #### Encrypted Region (bytes 5+)
 
-From byte 5 onward, tags with different payload sizes are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with strong encryption. Payload sizes are not multiples of any standard block cipher block size (AES=16, DES=8), indicating a **stream cipher** or counter-mode block cipher. The tag IC reference 0x17 matches the EM Microelectronic EM4237, which implements **Grain-128A** (ISO/IEC 29167-13) — a lightweight stream cipher with 128-bit key and 96-bit IV. This is the leading theory for the tag encryption algorithm (see Encryption Investigation section below).
+From byte 5 onward, tags with different payload sizes are completely different — XOR produces uniformly distributed output (~6.4 bits/byte entropy), consistent with strong encryption. Payload sizes are not multiples of any standard block cipher block size (AES=16, DES=8), indicating a **stream cipher** or counter-mode block cipher. The encryption algorithm is **unknown** — it runs inside the DA000001-01 ASIC. See Encryption Investigation section below.
 
 #### UID Independence
 
@@ -361,7 +361,7 @@ LEGO's tag security operates at **two layers**:
 
    The 16-byte key and 5-byte parameter reside in the config struct at `0x80DCC8` which is populated from ROFS config data during boot. The claim that hardware OTP is involved is plausible (the key may be per-brick unique) but not directly confirmed from disassembly alone — it's possible the key is static across bricks if sourced only from ROFS. The purpose is to authenticate the EM9305 to the ASIC, preventing a rogue processor from commanding the ASIC's tag reader and decryption engine.
 
-2. **Tag data encryption** (in ASIC silicon): Raw EEPROM content is encrypted. The ASIC decrypts it after reading, before passing structured TLV data to the EM9305. The decryption key is in the ASIC's internal logic — not accessible from the EM9305 firmware or via JTAG. All bricks share the same decryption capability (tags work on any brick). The encryption algorithm is **not AES-CCM** — the AES-CCM functions in the EM9305 firmware are for BrickNet PAwR encryption and EM9305↔ASIC mutual authentication. The tag IC reference 0x17 matches the EM4237 (Grain-128A stream cipher, ISO/IEC 29167-13), making Grain-128A the leading candidate algorithm (see Encryption Investigation below).
+2. **Tag data authenticated encryption** (in ASIC silicon): Raw EEPROM content is encrypted with full AEAD — empirically confirmed (2026-03-24) that single-bit modification to any byte causes silent rejection. The ASIC decrypts and validates internally, before passing structured TLV data to the EM9305. The encryption algorithm is **unknown** — it is not AES-CCM (those firmware functions are for BrickNet/chip auth). It behaves like an authenticated stream cipher with per-content IV. Clones work on NXP ICODE SLIX2 tags, proving the tag IC is irrelevant — the ASIC decrypts the blob regardless of manufacturer. All bricks share the same decryption capability (tags work on any brick).
 
 Tag access itself is **completely open** — no password, no page protection, no privacy mode. Anyone with an NFC reader can dump the raw EEPROM. But the data is meaningless without the decryption key.
 
@@ -451,16 +451,23 @@ Tag removal is **not instant**. The firmware has a 20-tick grace period (~320ms 
 
 ### Tag Security
 
-**Post-decryption validation** in the EM9305 firmware is **minimal** — the firmware performs zero cryptographic checks on decrypted tag data. All security is in the ASIC:
+**Full authenticated encryption** — confirmed empirically (2026-03-24). Single-bit modifications to ANY byte of the tag data cause silent rejection:
 
-- **ISO 15693 CRC-16:** Handled by ASIC hardware (no CRC functions in EM9305 firmware for tag data — confirmed by exhaustive search, no CRC-16/CRC-32 polynomial constants found)
-- **Encryption + integrity:** Handled by ASIC silicon (algorithm believed to be Grain-128A with optional MAC, see Encryption Investigation below)
-- **Format validation:** ASIC checks cleartext header format (payload length, `01 0C`, format byte `01`) before decryption — invalid headers cause silent rejection (no red flash)
-- **Firmware-side:** Only a dual-read complement check in the scan loop at `0x67634` (reads twice, verifies consistency) — not a cryptographic check
+| Modified Region | Result | Conclusion |
+| --- | --- | --- |
+| Header length byte | Silent reject | Header validated (AAD or pre-decryption check) |
+| First byte after header (IV region) | Silent reject | IV is cryptographically bound to ciphertext |
+| Middle of ciphertext | Silent reject | Ciphertext body is integrity-checked |
+| Last data byte | Silent reject | Tail is authenticated (no unprotected padding) |
+| Format byte (`01` → `00` or `02`) | Silent reject | Format byte validated before decryption |
 
-The EM9305 trusts whatever the ASIC deposits into its registers. If the ASIC accepts a tag, the firmware uses it unconditionally.
+**Tag manufacturer independence:** Byte-perfect clones work on NXP ICODE SLIX2 tags (manufacturer 0x04) despite originals being EM Microelectronic (0x16). The ASIC does not check tag manufacturer, IC reference, or UID. Security relies entirely on the encrypted data blob.
 
-**Note:** An earlier version of this document described a 5-step "CRC32 + security format + payload verification" chain. This was speculative and has been corrected — there is no CRC32 tag data validation in the EM9305 firmware, and the actual validation mechanism is inside the ASIC.
+**Validation is in the ASIC:** The EM9305 firmware performs zero cryptographic checks on tag data (confirmed by exhaustive search — no CRC/MAC functions found). The ASIC validates the MAC internally and simply does not deposit data when validation fails. The EM9305 sees "no tag" rather than "invalid tag."
+
+**Implications for custom tags:** Even with known keystream, creating a valid tag requires computing a valid MAC, which requires the encryption key. There is no modification-based forgery path — the MAC covers all bytes including the IV and header.
+
+**Note:** An earlier version of this document described a 5-step "CRC32 + security format + payload verification" chain. This was speculative and has been corrected. The actual mechanism is authenticated encryption handled entirely by the ASIC.
 
 ### Tag Reading Pipeline
 
@@ -663,9 +670,9 @@ This parser feeds into the tag content structure at `0x80B944`, which is the con
 
 The EM9305 firmware contains **no CRC-16 or CRC-32 calculation** for tag data (confirmed by exhaustive search — no CRC constants or functions found). ISO 15693 CRC-16 is handled entirely by the ASIC hardware. The `0xDEADDD00` value found in the code is the **crash/fault reporting magic** (stored at `0x80F470` by the assert handler at `0x3B1D4`), not a tag data sentinel or integrity check.
 
-### Tag IC Identification: EM4237 (Grain-128A)
+### Tag IC Identification
 
-The LEGO Smart Tags use an EM Microelectronic ISO 15693 IC with IC reference **0x17**, matching the **EM4237** — EM Micro's ISO 15693 chip with **Grain-128A** (ISO/IEC 29167-13) encryption support. It is **not** an EM4233SLIC (IC ref 0x02/0x16).
+The LEGO Smart Tags use an EM Microelectronic ISO 15693 IC with IC reference **0x17** (matches EM4237 spec). However, the tag IC is **irrelevant to the encryption** — byte-perfect clones on NXP ICODE SLIX2 (manufacturer 0x04, completely different IC) work identically. The tag is pure passive storage; the DA000001-01 ASIC handles all decryption regardless of tag manufacturer.
 
 | Property | Value |
 | --- | --- |
@@ -717,21 +724,42 @@ Debug strings were stripped in production (v0.65+) but all functional code is pr
 
 ## Tag Encryption Investigation
 
-> Status: Active investigation (2026-03-17). Theory is Grain-128A; not yet confirmed.
+> Status: BLOCKED (2026-03-24). Algorithm unknown. Full AEAD confirmed empirically. Key recovery infeasible.
 
 ### Algorithm Identification
 
-The tag encryption algorithm runs inside the DA000001-01 ASIC. It is **not** AES-128-CCM — the AES-CCM functions in the EM9305 firmware are for BrickNet PAwR encryption and EM9305↔ASIC chip authentication.
+The tag encryption algorithm runs inside the DA000001-01 ASIC. It is **unknown**. What we can rule out and confirm:
 
-**Evidence for Grain-128A (ISO/IEC 29167-13):**
+**Ruled out:**
+- **Tag-IC-based encryption** — clones work on NXP ICODE SLIX2 (different manufacturer). The tag is passive storage; the ASIC decrypts.
+- **Non-authenticated encryption** — empirical bit-flip tests (2026-03-24) confirmed full AEAD. MAC covers all bytes.
 
-1. Tag IC reference **0x17** matches EM Microelectronic's **EM4237**, which implements Grain-128A
-2. Tag memory layout (66 blocks × 4 bytes) matches EM4237
-3. Payload sizes (69–166 bytes of encrypted data) are **not multiples of any block cipher block size** — consistent with a stream cipher
-4. EM Microelectronic uses Grain-128A across their ISO 15693 product line (EM4237, EM4333)
-5. Grain-128A is a lightweight LFSR+NFSR stream cipher feasible for a small mixed-signal ASIC
+**Leading hypothesis: AES-128-CCM (or vCCM)**
 
-**Grain-128A parameters:** 128-bit key, 96-bit IV (12 bytes), keystream XOR'd with plaintext, optional 32-bit MAC.
+The DA000001-01 ASIC was designed by **CSEM** (Centre Suisse d'Electronique et Microtechnique, Neuchâtel) — confirmed from die markings in the Hackaday teardown. CSEM's cryptographer **Damian Vizar** published a paper in 2021 on optimizing AES-CCM for exactly this class of device:
+
+> Gjiriti, Reyhanitabar, Vizár. **"Power Yoga: Variable-Stretch Security of CCM for Energy-Efficient Lightweight IoT."** IACR Trans. Symmetric Cryptol. 2021(2), pp. 446–468. [DOI:10.46586/tosc.v2021.i2.446-468](https://tosc.iacr.org/index.php/ToSC/article/view/8918)
+
+The paper proposes **vCCM** — a variable-stretch variant of AES-CCM that allows different MAC (tag) lengths under the same key. The "transform" is trivially encoding the tag length into the last byte of the CCM nonce. This enables energy savings of 8-21% on battery-powered devices by using shorter MACs for less sensitive messages. The paper was authored by a CSEM employee, addresses the exact design constraints of a battery-powered toy ASIC, and was published during the likely ASIC development timeline (product launched 2025, ASIC design ~2021-2022).
+
+AES-CCM properties that match all observations:
+- **Full AEAD** — CTR mode encryption + CBC-MAC authentication. MAC covers all bytes ✓
+- **Non-block-aligned payloads** — CTR mode produces keystream of arbitrary length ✓ (CCM doesn't require block-aligned messages despite using a block cipher internally)
+- **Per-content nonce** — standard CCM uses a nonce (7-13 bytes) that must be unique per encryption ✓
+- **Variable MAC lengths** — vCCM supports {4, 6, 8, 10, 12, 14, 16} byte MACs, which could explain the 1-5 byte size variations between tags with the same capabilities
+- **128-bit AES key** — standard key size, widely supported in hardware
+
+The AES-CCM *firmware strings* in the EM9305 ("AES-CCM context create failed") are for BrickNet/chip auth, not tag decryption. However, the ASIC could have its own AES hardware core — CSEM designs custom ASICs with embedded crypto accelerators, and AES cores are standard IP blocks (~10-20K gates).
+
+**Previous hypotheses:**
+- **Grain-128A** (based on tag IC ref 0x17 matching EM4237) — weakened by cross-vendor clone evidence proving the tag IC is irrelevant to the encryption. Still possible but less likely given the CSEM/vCCM connection.
+- **Proprietary cipher** — possible but unlikely given CSEM's published preference for standard AES-CCM.
+
+**Confirmed properties:**
+- Authenticated encryption with associated data (AEAD) — MAC covers header, IV region, ciphertext, and tail
+- Stream-like behavior — non-block-aligned payload sizes (69–166 bytes), consistent with CTR mode
+- Per-content nonce/IV — first bytes after header are unique per content, identical across physical copies
+- Deterministic — same content always produces identical ciphertext
 
 ### Hypothesized Tag Layout
 
@@ -888,25 +916,25 @@ These 40 keystream bytes must be producible by Grain-128A(key, IV) at the corres
 
 ### Analysis Scripts
 
-- `examples/ccm-nonce-analysis.js` — XOR analysis of all tag pairs (91 pairs × 3 offsets)
-- `examples/ccm-same-length-analysis.js` — Same-length item triplet analysis
-- `examples/ccm-known-constants-search.js` — Search for TLV constants at all positions
-- `examples/ccm-structure-search.js` — Assumption-free structure search
-- `examples/grain128a-iv-test.js` — Grain-128A IV hypothesis and size analysis
-- `examples/grain128a/verify_grain.c` — Grain-128A C reference implementation
-- `examples/grain128a/grain128a.c` — Grain-128A core (verified against Noxet/grain128a)
-- `examples/grain128a/known_plaintext.js` — Initial known plaintext compilation
-- `examples/grain128a/known_bytes_final.js` — Final known bytes with keystream derivation
-- `examples/grain128a/plaintext_map.js` — Full plaintext byte map for ship tags
-- `examples/grain128a/plaintext_template_v2.js` — Plaintext size cross-validation
-- `examples/grain128a/validate_offsets.js` — Fixed-size record validation (negative result)
-- `examples/grain128a/validate_offsets2.js` — Variable-size record analysis with gameplay data
-- `examples/grain128a/awing_analysis.js` — A-Wing tag analysis (4 same-structure tags)
-- `examples/grain128a/sat_solver.py` — z3 SAT solver (timed out)
-- `examples/grain128a/sat_solver_flat.py` — Flat-encoding SAT solver (timed out)
-- `examples/grain128a/sat_feasibility.py` — SAT feasibility test (32 rounds OK, 64+ timeout)
-- `examples/grain128a/sat_4tags.py` — z3 solver with 4 tags (killed after 2+ hours)
-- `examples/grain128a/cms_solver.py` — CryptoMiniSat solver with native XOR clauses (killed after 2+ hours)
+- `research/analysis/ccm-nonce-analysis.js` — XOR analysis of all tag pairs (91 pairs × 3 offsets)
+- `research/analysis/ccm-same-length-analysis.js` — Same-length item triplet analysis
+- `research/analysis/ccm-known-constants-search.js` — Search for TLV constants at all positions
+- `research/analysis/ccm-structure-search.js` — Assumption-free structure search
+- `research/analysis/grain128a-iv-test.js` — Grain-128A IV hypothesis and size analysis
+- `research/analysis/grain128a/verify_grain.c` — Grain-128A C reference implementation
+- `research/analysis/grain128a/grain128a.c` — Grain-128A core (verified against Noxet/grain128a)
+- `research/analysis/grain128a/known_plaintext.js` — Initial known plaintext compilation
+- `research/analysis/grain128a/known_bytes_final.js` — Final known bytes with keystream derivation
+- `research/analysis/grain128a/plaintext_map.js` — Full plaintext byte map for ship tags
+- `research/analysis/grain128a/plaintext_template_v2.js` — Plaintext size cross-validation
+- `research/analysis/grain128a/validate_offsets.js` — Fixed-size record validation (negative result)
+- `research/analysis/grain128a/validate_offsets2.js` — Variable-size record analysis with gameplay data
+- `research/analysis/grain128a/awing_analysis.js` — A-Wing tag analysis (4 same-structure tags)
+- `research/analysis/grain128a/sat_solver.py` — z3 SAT solver (timed out)
+- `research/analysis/grain128a/sat_solver_flat.py` — Flat-encoding SAT solver (timed out)
+- `research/analysis/grain128a/sat_feasibility.py` — SAT feasibility test (32 rounds OK, 64+ timeout)
+- `research/analysis/grain128a/sat_4tags.py` — z3 solver with 4 tags (killed after 2+ hours)
+- `research/analysis/grain128a/cms_solver.py` — CryptoMiniSat solver with native XOR clauses (killed after 2+ hours)
 
 ### SAT Solver Attempts
 
@@ -966,7 +994,7 @@ CryptoMiniSat was run with 4 threads and native XOR clause support (Gaussian eli
 - 17 tag dumps with 6 unique IVs confirmed for PAwR combat ships
 - Full dispatch chain trace from ASIC sub-records through TLV reassembly to resource ref extraction
 - Detailed plaintext structure model validated against 7+ tags
-- All analysis scripts in `examples/grain128a/` and `examples/ccm-*.js`
+- All analysis scripts in `research/analysis/grain128a/` and `research/analysis/ccm-*.js`
 
 ## Play Engine
 

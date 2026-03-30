@@ -341,7 +341,7 @@ Three-state machine: 0=COMPLETE (data available), 1=ACTIVE (DMA in progress), 2=
 
 #### Stream 1: Content Identity (6 bytes + type_byte → housekeeping)
 
-The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bit opaque value used for change detection and PRNG seeding, not as the primary driver of gameplay logic (see [FLOW.md](../notes/FLOW.md)). The firmware treats this as an **opaque identifier** — no sub-field extraction (no AND-masks, shifts, or modular arithmetic on the bytes). It is used for equality comparison, XOR hashing, and wildcard detection. Two parallel extraction paths exist:
+The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bit opaque value used for change detection and PRNG seeding, not as the primary driver of gameplay logic (see [FLOW.md](FLOW.md)). The firmware treats this as an **opaque identifier** — no sub-field extraction (no AND-masks, shifts, or modular arithmetic on the bytes). It is used for equality comparison, XOR hashing, and wildcard detection. Two parallel extraction paths exist:
 
 **ROM content identity reader** (`0x13E48`): Calls EM9305 mask ROM function at `0xffdfd164`, which returns a pointer to 6 bytes populated by the ASIC after tag decryption. Assembles into content_lo (u32 LE from bytes[0..3]) and content_hi (u16 LE from bytes[4..5], zero-extended). Called from 9 sites including boot init (`0x27A90`), play engine init (`0x4F93C`), BLE notification builder (`0x118F8`), content hash computation (`0x1A4D8`), and TLV entry handler (`0xEC16`).
 
@@ -368,7 +368,7 @@ The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bi
 
 **How the 6-byte identity flows through the PPL system:**
 
-The content identity flows into the PPL system through multiple paths, though its primary role is housekeeping (change detection and PRNG seeding), not gameplay routing. The actual gameplay behaviour is driven by the resource reference records (Stream 2) — see [FLOW.md](../notes/FLOW.md):
+The content identity flows into the PPL system through multiple paths, though its primary role is housekeeping (change detection and PRNG seeding), not gameplay routing. The actual gameplay behaviour is driven by the resource reference records (Stream 2) — see [FLOW.md](FLOW.md):
 
 1. **PRNG seed**: content_lo ^ content_hi stored at `0x80CF28+0` — seeds the xorshift32 PRNG for per-playback variation in audio/LED selection within scripts
 2. **Change detection**: XOR comparison at `0x809430` (same tag vs new tag, avoids reloading)
@@ -379,7 +379,7 @@ The **actual matching logic** — where content_ref values from resource referen
 
 #### Stream 2: Resource References (multiple records → script + bank selection)
 
-Multiple TLV records carry resource references — each independently selecting a script, audio bank, and animation bank. This is the primary driver of gameplay logic (see [FLOW.md](../notes/FLOW.md)).
+Multiple TLV records carry resource references — each independently selecting a script, audio bank, and animation bank. This is the primary driver of gameplay logic (see [FLOW.md](FLOW.md)).
 
 **Tag TLV dispatch** (`0x523E4`): After TLV parsing at `0x4EC58`, dispatches by TLV type field. Type 4 → Identity tag handler chain (`0x47BE8` → callback at `0x5241C`). Type 6 → Item tag handler (`0x4D6B8` → vtable dispatch via `0x801B10` → `0x4D8E4`). Both paths extract 4 × u16 resource reference values from TLV sub-type `0x0008` at `0x52454`.
 
@@ -817,7 +817,7 @@ The ASIC-decrypted tag payload produces **two separate data streams**:
 
 A 6-byte opaque content identity extracted via ROM function `0xffdfd164` (or TLV buffer at `0x4FC58`). Packed into content_lo (u32) + content_hi (u16). Plus a **type_byte** (7th byte from TLV type 0x22 handler at `0xED74`) that routes events to preset type categories (0x03=identity, 0x06=item, etc.).
 
-The content identity is **not** the primary driver of gameplay logic — it is housekeeping: change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28` seeds the xorshift32 for per-playback variation in audio/LED selection). Different characters running the same script produce different variation sequences, making characters feel distinct. The identity also flows into pool entries and match scoring, but the actual gameplay behaviour is driven by resource reference records (Stream 2) — see [FLOW.md](../notes/FLOW.md).
+The content identity is **not** the primary driver of gameplay logic — it is housekeeping: change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28` seeds the xorshift32 for per-playback variation in audio/LED selection). Different characters running the same script produce different variation sequences, making characters feel distinct. The identity also flows into pool entries and match scoring, but the actual gameplay behaviour is driven by resource reference records (Stream 2) — see [FLOW.md](FLOW.md).
 
 **Stream 2 — Resource References (multiple records → script + bank selection):**
 
@@ -838,7 +838,7 @@ Extracted at `0x52454`, dispatched via opcode `0x72` (`0x16B84`) through the mes
 
 Each resource reference record independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode. The content identity (Stream 1) is housekeeping: change detection and PRNG seeding. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), button/shake → 0x10 (`0x50A94`). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
 
-A **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **within** scripts — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play. Different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. See [FLOW.md](../notes/FLOW.md) for the full tag→play engine flow.
+A **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **within** scripts — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play. Different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. See [FLOW.md](FLOW.md) for the full tag→play engine flow.
 
 #### Event Dispatch Table (0x37D5A4)
 
@@ -1222,7 +1222,7 @@ The NPM processing uses 55 float operations across its function chain, concentra
 
 12+ versions extracted from Unity Addressable asset bundles inside the `split_UnityDataAssetPack.apk` (102 MB) shipped with the LEGO SmartAssist app. Each firmware is embedded as a Unity SerializedFile asset identified by GUID.
 
-The Bilbo backend also has firmware download endpoints (see [BACKEND.md](../notes/BACKEND.md)). The app's update flow reads the brick's current version string from register `0x22`, then calls `GetStateFor(product, version)` with the product name (`AudioBrick`) and version (e.g. `"0.72.1"`). The backend returns the state hash for the target (newer) firmware version. The app then downloads the firmware binary using that target hash via `GetUpdateFor(stateHash)`. The brick's own `UpdateState` register (`0x88`) is not needed — the version string is sufficient.
+The Bilbo backend also has firmware download endpoints (see [BACKEND.md](BACKEND.md)). The app's update flow reads the brick's current version string from register `0x22`, then calls `GetStateFor(product, version)` with the product name (`AudioBrick`) and version (e.g. `"0.72.1"`). The backend returns the state hash for the target (newer) firmware version. The app then downloads the firmware binary using that target hash via `GetUpdateFor(stateHash)`. The brick's own `UpdateState` register (`0x88`) is not needed — the version string is sufficient.
 
 Debug strings are progressively stripped in later builds — earlier versions (v0.46.0) contain more source filenames than production builds (v0.72.1).
 

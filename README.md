@@ -109,9 +109,9 @@ npm install node-smartplay --save
 
 * **Linux permissions** — You may need to [grant node access to the Bluetooth adapter](https://github.com/stoprocent/noble?tab=readme-ov-file#running-without-rootsudo-linux-specific).
 
-### Reverse Engineering Notes
+### Reverse Engineering
 
-The [`notes/`](notes/) directory contains reverse engineering documentation for the Smart Play BLE protocol, hardware, backend API, and file transfer system.
+The [`research/`](research/) directory contains reverse engineering documentation, analysis scripts, and tools for the Smart Play ecosystem — BLE protocol, hardware, firmware, tag encryption, backend API, and brick-to-brick communication. See [`research/README.md`](research/README.md) for details.
 
 ### Development
 
