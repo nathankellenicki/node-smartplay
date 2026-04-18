@@ -398,7 +398,7 @@ The ASIC decrypts the tag and produces a **6-byte content identity** — a 48-bi
 
 **Content identity writer** (`0x4FF58`): Writes content_lo to `[0x809430]` and content_hi to `[0x809434]`. Called from boot init (`0x27A98`) and tag-change handler (`0x4F950`).
 
-**Content identity register** (`0x809430`): Stores the current content identity — content_lo (u32) at +0, content_hi (u32) at +4. Written by `0x4FF58` during boot and on tag change. Read by all subsequent event builders (timer at `0x50A20`, button at `0x50A94`, content resolver at `0x50FDC`, scan loop at `0x67634`) for change detection and PRNG seeding. The content identity persists after the tag scan so all subsequent events can detect whether the same tag is still present.
+**Content identity register** (`0x809430`): Stores the current content identity — content_lo (u32) at +0, content_hi (u32) at +4. Written by `0x4FF58` during boot and on tag change. Read by all subsequent event builders (timer at `0x50A20`, IMU shake at `0x50A94` — firmware-internal name "button", see note below — content resolver at `0x50FDC`, scan loop at `0x67634`) for change detection and PRNG seeding. The content identity persists after the tag scan so all subsequent events can detect whether the same tag is still present.
 
 **PPL XOR key** (`0x80CF28`): The PPL state struct init at `0x12134` computes `content_lo ^ content_hi` and stores it as the first field of the PPL struct at `0x80CF28`. This 32-bit value seeds the xorshift32 PRNG that generates per-playback variation in audio/LED selection within scripts — different characters running the same script produce different variation sequences. The init also registers 11 PPL handler entries with IDs {0x48, 0x4C, 0x49, 0x4B, 0x06, 0x05, 0x07, 0x01, 0x02, 0x04, 0x08, 0x47} and ROFS table pointers.
 
@@ -459,7 +459,7 @@ Packed into 12-byte struct `{u16, u16, u16, u16, u32(=0)}` and dispatched via op
 
 #### Event Builders and Content Resolution
 
-**Play event message builders** (`0x50A20`, `0x50A94`): Non-tag event builders that check play engine readiness (`0x80D968`) and call content resolver `0x50FDC`. Each hardcodes a preset type in r3: `0x50A20` passes `0x0E` (Timer/idle), `0x50A94` passes `0x10` (Button/shake). After resolving, serialize message with opcode + params, enqueue to play engine event ring buffer via `0x51094`.
+**Play event message builders** (`0x50A20`, `0x50A94`): Non-tag event builders that check play engine readiness (`0x80D968`) and call content resolver `0x50FDC`. Each hardcodes a preset type in r3: `0x50A20` passes `0x0E` (Timer/idle), `0x50A94` passes `0x10` (the firmware calls this "button" internally but **the Smart Brick has no physical button** — the actual trigger is IMU accelerometer threshold crossing, e.g. X-Wing swoosh, turret rotation, Lightsaber shake). After resolving, serialize message with opcode + params, enqueue to play engine event ring buffer via `0x51094`.
 
 **PPL search** (`0x4F97C`): Buffer allocator and content encoder — NOT a PPL table iterator. Computes score `(preset_type << 4) + match_bonus`: +3 if wildcard (all 0xFFFF), +10 if content identity exactly matches previous (XOR == 0), +2 if mismatch. Score bit 0 determines entry size: odd → 13 bytes (wildcard, no identity stored), even → 19 bytes (stores full content identity). Calls `0x4FB20` → `0x4FD50` for pool allocation. The actual PPL preset table matching happens downstream in the play engine (ROFS-mapped code).
 
@@ -784,9 +784,9 @@ Six distinct type IDs group content by **interaction mode** — not by tag hardw
 | **0x09** | **11** | **#21–#31** | **NPM/proximity reactions** — short reactive scripts triggered by brick-to-brick positioning events | **0x40** |
 | 0x0B | 3 | #32–#34 | System/default scripts (startup, transitions) | 0x40 |
 | 0x0E | 16 | #35–#50 | Timer/idle ambient play sequences (1 PAwR-capable: script 42) | 0x00/0x50 |
-| 0x10 | 7 | #51–#57 | Button/shake responses (1 PAwR-capable: script 54) | 0x50 |
+| 0x10 | 7 | #51–#57 | IMU shake / accelerometer responses — firmware's internal name is "button" but no physical button exists (script 54 is the largest) | 0x50 |
 
-**Note:** Types 0x03 and 0x06 are labelled "Identity" and "Item" in some earlier notes, but this is misleading. The preset type is an **interaction mode slot**, not a tag hardware type. Tag scan (0x03/0x06) establishes content identity at `0x809430`. Timer/idle (0x0E) handles ongoing gameplay. Button/shake (0x10) handles physical interaction. NPM (0x09) handles proximity. System (0x0B) is default. For tag-triggered events, the preset type comes from the tag's encrypted content data — the firmware computes it from the tag payload via a ROM function call. A tile tag could theoretically carry content type 0x03 if programmed that way. For non-tag events, the firmware hardcodes the preset type: timer events → 0x0E, button/shake → 0x10.
+**Note:** Types 0x03 and 0x06 are labelled "Identity" and "Item" in some earlier notes, but this is misleading. The preset type is an **interaction mode slot**, not a tag hardware type. Tag scan (0x03/0x06) establishes content identity at `0x809430`. Timer/idle (0x0E) handles ongoing gameplay. Type 0x10 handles IMU shake/motion (firmware calls this "button" internally despite there being no physical button — the Smart Brick has no buttons; motion is detected by the accelerometer). NPM (0x09) handles proximity. System (0x0B) is default. Color-sensor events are NOT a preset type — they take a separate ISR-driven path (see "Color sensor" section). For tag-triggered events, the preset type comes from the tag's encrypted content data — the firmware computes it from the tag payload via a ROM function call. A tile tag could theoretically carry content type 0x03 if programmed that way. For non-tag events, the firmware hardcodes the preset type: timer events → 0x0E, IMU shake → 0x10.
 
 **Type 0x09 (NPM/proximity)** scripts are structurally distinct from all other types:
 - All 11 have the unique header flag byte `0x40` at script header position 11 (only shared with system type 0x0B)
@@ -881,7 +881,7 @@ Multiple TLV records (sub-type `0x0008`, tag byte `0x12`, data length 8 each) �
 
 Extracted at `0x52454`, dispatched via opcode `0x72` (`0x16B84`) through the message queue. The handler chain populates the slot table at `0x80931C` with audio and animation bank IDs, read back by item handler `0x4D6FC`/`0x4D8E4`.
 
-Each resource reference record independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode. The content identity (Stream 1) is housekeeping: change detection and PRNG seeding. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), button/shake → 0x10 (`0x50A94`). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
+Each resource reference record independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode. The content identity (Stream 1) is housekeeping: change detection and PRNG seeding. The **preset type** (0x03, 0x06, etc.) is an interaction mode slot — for non-tag events, the firmware hardcodes the type: timer → 0x0E (`0x50A20`), IMU shake → 0x10 (`0x50A94`, firmware-internal name "button"). The content identity register persists after the tag scan, so all subsequent events reuse the same content context.
 
 A **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **within** scripts — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play. Different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. See [FLOW.md](FLOW.md) for the full tag→play engine flow.
 
@@ -972,27 +972,34 @@ Handlers for the 18 event IDs 0x00–0x11. Relevant entries for combat:
 
 | Event ID | Handler | Meaning |
 | --- | --- | --- |
-| 0x0C | `0x1898E` | Hit state cleared |
-| 0x0D | `0x18A12` | Individual hit (type 1) |
-| 0x0E | `0x18A3A` | Individual hit (type 2) |
-| 0x0F | `0x18AB6` | Hit threshold crossed (explosion) |
+| 0x0C | `0x1898E` | **Destroyed** (explosion SFX) — fires at 6th total hit (2nd hit while damaged) |
+| 0x0D | `0x18A12` | Individual hit (type 1) — per-hit SFX |
+| 0x0E | `0x18A3A` | Individual hit (type 2) — per-hit SFX |
+| 0x0F | `0x18AB6` | **Entering damaged state** (alarm SFX) — fires at 4th total hit |
 
 These handlers update state variables (flags in `0x80CEBE`, slot arrays in `0x8089FC`, animation pointer in `0x80DA14`, counter at `0x80CF28+0x12`) and play audio synchronously via direct play-engine calls (`0x165E0`, `0x4B9C`, `0x47344`/`0x47124`). None of them push to Queue A, and none invoke the script interpreter. Hit-cleared (`0x1898E`) re-enqueues a 6-byte record onto Queue B via `0xFE90` for continued sound chaining.
 
-##### Hit counter / combat state machine
+##### Hit counter / combat state machine (two-threshold)
 
 Located at `0x1232C`. State bytes at `0x80CF28`:
 - `+0x10` — last content/tag ID (new distinct value arms the counter)
 - `+0x0E`, `+0x0F` — enable gates (must both be 1 for the counter to advance)
 - `+0x12` — hit counter byte
-- `+0x13` — flags (bit 2 = "in hit state")
+- `+0x13` — flags (bit 2 = "in damaged state")
 
-Logic at `0x12362`–`0x1239E`:
-- Not-yet-hit path: on 4th hit (`counter > 3`), set flag bit 2, reset counter, emit event **`0x0F` (explosion)** onto Queue B.
-- Below threshold: increment counter only, optionally emit `0x0D` or `0x0E` depending on message sub-type.
-- Already-hit path: if counter > 1 while in hit state, clear bit 2 and emit event **`0x0C`** (hit cleared).
+Logic at `0x12362`–`0x1239E` implements a two-threshold state machine:
 
-**Threshold = 4 hits** (strictly `> 3`).
+**Healthy state (bit 2 = 0):**
+- Hits 1–3: increment `[+0x12]`. Emit event `0x0D` or `0x0E` (depending on message sub-type) onto Queue B.
+- Hit 4 (`counter > 3`): set flag bit 2, reset counter to 0, emit event **`0x0F`** — *entering damaged state, plays alarm SFX*.
+
+**Damaged state (bit 2 = 1):**
+- 1st hit in damaged state: increment counter. Emit `0x0D` / `0x0E`.
+- 2nd hit in damaged state (`counter > 1`): clear flag bit 2, emit event **`0x0C`** — *destroyed, plays explosion SFX*.
+
+**Observed gameplay timing:** alarm fires at 4 total hits, explosion at ~6 total hits (2 additional hits after alarm). Firmware logic matches this pattern exactly.
+
+Earlier documentation labeled `0x0F` as "explosion" and `0x0C` as "hit cleared" — both incorrect. The true semantics are `0x0F` = "entering damaged state (alarm)", `0x0C` = "destroyed (explosion)". Corrected 2026-04-18 based on user gameplay observation.
 
 ##### xorshift32 PRNG (`0x1E5D2`)
 
@@ -1007,6 +1014,49 @@ At `0x34530`, the firmware validates the play.bin header loaded from ROFS:
 4. Copies header fields into PPL runtime state
 
 This confirms the PPL format is tightly coupled to the firmware — a play.bin with a different number of preset types would be rejected.
+
+#### Color Sensor Input (ISR-driven ADC pathway)
+
+Color detection does **not** flow through the preset-type system like tag scan / timer / shake / NPM. It takes its own ISR path. The DA000001-01 ASIC handles the actual color sensing; the EM9305 reads an ADC sample and dispatches an event code.
+
+**Hardware registers:**
+- `[0xF04400]` — ASIC coil/sensor mode-select byte. Value `0x04` = ADC-read mode (`0x08`, `0x10` are other channels).
+- `[0xF0407C]`/`[0xF0407D]` — ADC sub-mode / gating bytes.
+- `[0xF00860]` — IRQ status word; bit position selects which sensor event fired.
+- `[0xF00868]` — IRQ ack.
+- AUX `[0x682]` (1666) — ADC trigger, `r1 = 1 << channel`.
+- AUX `[0x690 + channel*3]` (1680+) — ADC result, 13-bit (0x1FFF = saturation).
+
+**Reader helpers:**
+- `0x341FC` — bare ADC channel read
+- `0x34228` — read channel 3 with baseline subtraction from `[0x8093EC]` (signed delta)
+- `0x34240` — read channel 2 with offset and baseline from `[0x8093FC]`
+
+**ISR `0x336E4`** dispatches on `[0xF00860]` bits and emits event codes via callback dispatch at `0x33AD8`:
+- bit 0x15 → event code `0x0A` if `[0xF0407D]`≠0 else `0x04` (ADC read of channel 3)
+- bit 0x16 → event code `0x09` (channel 3)
+- bit 0x10 → event codes `0x00`, `0x07`, `0x08`
+- bit 0x04 → event code `0x02`
+- bit 0x00 → event code `0x03`
+- bit 0x19 → no ADC read, sets `[0x80DF1C]=1` via `[0xF04400]=0x08`
+
+**Sensor event-queue structs** at `0x8093E0` and `0x8093F0` (16 bytes each):
+- `+0x00` user pointer
+- `+0x04` primary callback
+- `+0x08` secondary callback
+- `+0x0C` context halfword
+- `+0x0E` latest sensor value halfword
+- baselines at `0x8093EC` / `0x8093FC`, flags at `0x8093CC` / `0x8093DC`
+
+Callbacks are installed by `0x33B00` / `0x33BC0` from the ASIC software-register `0x01` writer path at `0x2A288`.
+
+**Event routing:** emitted event codes `0x00–0x05` feed Queue A and are matched against the 38-row dispatch table at `0x37D5A4` (same table used for other Queue-A events). Codes `0x07–0x0A` fall through to the timer fallback table at `0x37D42C`. The selected script is invoked via the single interpreter entry `0x6BFFE`.
+
+**No color→action mapping lives in EM9305 code.** Confirmed by exhaustive string search — firmware contains zero `color`, `rgb`, `red`, `green`, `blue`, `fire`, `weapon`, `repair`, `refuel`, `fuel`, `health`, `ammo` strings and no comparisons against small-integer color codes. Which ISR bit corresponds to which sensor (color vs accelerometer vs sound), and which event code represents RED vs GREEN vs BLUE, must live in either:
+1. **ASIC silicon** — the DA000001-01 may do color classification internally and deliver pre-classified event codes on different IRQ bits.
+2. **play.bin script** — the selected script reads the stashed ADC halfword at `0x8093EE` / `0x8093FE` and branches on value thresholds.
+
+**Red / green / blue reactions are audio + LED only — no gameplay state.** The firmware has no fuel/health/ammo/repair counters. Green ("repair") and blue ("refuel") play flavor sounds and LED sequences but don't change anything. Red additionally triggers a C-level BrickNet send (the mechanism by which OTHER bricks see hits — confirmed by the hit counter state at `[0x80CF28+0x12]` being the ONLY real combat state variable).
 
 #### NPM Event → Script Routing
 

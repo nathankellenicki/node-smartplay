@@ -413,7 +413,9 @@ The tag carries **content identifiers**, not play logic. There is no lookup tabl
 2. **Audio bank** (from `audio.bin`) — which set of sounds to play (e.g., swoosh, laser, explosion)
 3. **Animation bank** (from `animation.bin`) — which LED patterns to use
 
-This means different tags can share the same script but produce completely different experiences by referencing different audio and animation banks. For example, two vehicle tags could both use the same combat script (motion reactivity, color sensor firing, PAwR hit counting, damage progression) but with entirely different engine sounds, firing sounds, explosion effects, and LED patterns.
+This means different tags can share the same script but produce completely different experiences by referencing different audio and animation banks. For example, two vehicle tags could both use the same combat orchestrator script (#42 — runs every timer tick while a PAwR-combat tag is active, polls the hit counter and damaged flag) but with entirely different engine sounds, firing sounds, alarm sounds, explosion effects, and LED patterns.
+
+**What is / isn't state:** The ONE piece of gameplay state in combat is the hit counter at `[0x80CF28+0x12]` (threshold 4 → enter damaged state, threshold 2 in damaged state → destroyed) — this is hardcoded C, identical across all ship tags. Everything else the color sensor drives (green = "repair" sounds, blue = "refuel" sounds) is purely audio + LED flavor. The firmware contains no fuel/health/ammo counters and no strings mentioning them.
 
 After validation, the firmware reads content from the parsed tag event struct:
 
@@ -808,20 +810,20 @@ The plaintext consists of an **identity block** + variable number of **resource 
 | identity_block (item tags) | 51 bytes | Content identity + item scan resource ref |
 | identity_block (identity tags) | 57 bytes | Content identity + identity scan resource ref |
 | timer_ref | 6 bytes | Timer/idle script reference (compact sub-record) |
-| button_ref | 33 bytes | Button/IMU script reference (full resource ref with bank data) |
+| shake_ref (firmware's "button_ref") | 33 bytes | Type-0x10 / IMU shake script reference (full resource ref with bank data). Firmware calls this "button" internally, but no physical button exists — the actual trigger is accelerometer motion. |
 | npm_ref | 44-58 bytes | NPM proximity reference (variable, carries positioning params) |
 
-**Tag type decomposition:**
+**Tag type decomposition** (reading "button" as "shake/IMU" per the note above):
 
 | Tag | PT bytes | Model | Match |
 | --- | --- | --- | --- |
 | R2-D2 | 57 | 57 (id_block only) | ✓ |
-| Fuel Cargo | 84 | 51 + 33 (item + button) | ✓ |
-| X-Wing | 90 | 51 + 6 + 33 (item + timer + button) | ✓ |
+| Fuel Cargo | 84 | 51 + 33 (item + shake) | ✓ |
+| X-Wing | 90 | 51 + 6 + 33 (item + timer + shake) | ✓ |
 | TIE Fighter | 90 | 51 + 6 + 33 | ✓ |
 | Falcon | 90 | 51 + 6 + 33 | ✓ |
 | A-Wing | 90 | 51 + 6 + 33 | ✓ |
-| Han Solo | 96 | 57 + 6 + 33 (id + timer + button) | ✓ |
+| Han Solo | 96 | 57 + 6 + 33 (id + timer + shake) | ✓ |
 | Hyperdrive | 92 | 90 + 2 extra | ~close |
 | Chewbacca | 99 | 96 + 3 extra | ~close |
 | C-3PO | 101 | 96 + 5 extra | ~close |
@@ -832,10 +834,12 @@ The plaintext consists of an **identity block** + variable number of **resource 
 | Palpatine | 154 | 96 + 58 (npm) | ✓ |
 
 **Gameplay observations confirming capabilities:**
-- All ship tags (X-Wing, TIE, Falcon, A-Wing): PAwR combat (timer), IMU swoosh sounds (button)
-- Imperial Turret tags: PAwR combat (timer), IMU rotation sounds (button) — two variants at 105 and 108 bytes (don't fit the 90-byte ship model exactly)
-- Fuel Cargo: IMU sloshing sounds (button), no PAwR, no idle timer
-- Lightsaber: responds to shaking (button)
+- All ship tags (X-Wing, TIE, Falcon, A-Wing): PAwR combat (timer orchestrator #42), IMU-triggered swoosh sounds (type 0x10 / shake)
+- Imperial Turret tags: PAwR combat (timer), IMU-triggered rotation sounds (type 0x10 / shake) — two variants at 105 and 108 bytes (don't fit the 90-byte ship model exactly)
+- Fuel Cargo: IMU-triggered sloshing sounds (type 0x10 / shake), no PAwR, no idle timer
+- Lightsaber: responds to shaking (type 0x10 / shake)
+
+(Type 0x10 is the preset-type slot the firmware internally labels "button". The Smart Brick has no physical button — type 0x10 is IMU/accelerometer threshold-crossed motion. All references below to "button_ref" / "button_bytes" refer to the resource-reference record that binds type 0x10 to a script + banks.)
 - R2-D2: minimal interaction (identity scan only)
 
 **Note on variable record sizes:** Turret A (88 PT), Turret B (91 PT), and Hyperdrive (92 PT) don't match the ship model (90 PT) despite having the same capabilities. The identity_block size varies by 1-2 bytes between different item contents — likely due to variable-length content identity encoding (compact vs extended format controlled by a flag byte at `0x4FC58`).
@@ -890,7 +894,7 @@ Total: 19 bytes (3 header + 16 payload)
 
 | PT Offset | Constraint | Source |
 | --- | --- | --- |
-| 68 | One of: `0x68, 0x48, 0x70, 0x50, 0x58, 0x40, 0x60` | Button content_ref lo (7 button script params) |
+| 68 | One of: `0x68, 0x48, 0x70, 0x50, 0x58, 0x40, 0x60` | Shake/IMU (type 0x10) content_ref lo — 7 possible script params (firmware-internal "button") |
 | 71 | `0x00` or `0x01` | bank_index hi (must be ≤ 499) |
 
 **Total constraints:** 10 firm bytes × 4 tags = **320 bits** of keystream constraint on the 128-bit key. The key is massively over-determined.
@@ -1046,15 +1050,20 @@ Tag content data
 
 ### Sensor Input
 
-All sensors are read by the ASIC via time-multiplexed copper coils and passed to the EM9305 as interrupt-driven SPI transfers. There is no separate sensor API — sensor values land in RAM and the semantic tree executor reads them directly through its typed value system.
+The Smart Brick has NO physical buttons. Every user input is sensor-driven. All sensors are read by the ASIC via time-multiplexed copper coils and passed to the EM9305 as interrupt-driven SPI transfers. There is no separate sensor API — sensor values land in RAM and either feed runtime state the play engine reads, or trigger events directly via the ISR at `0x336E4`.
 
-| Sensor | Hardware | How It Reaches the Play Engine |
+| Sensor | Hardware | How it reaches play engine / firmware |
 | --- | --- | --- |
-| Accelerometer | ASIC coils + ADC | Interrupt at `0xF00860` → SPI → play detector state at `0x80D9D0` |
-| Light / color | ASIC coils + ADC | Same path — ASIC analog config via `0xF00A84` modes `0x8`/`0x100`/`0x200` |
-| Sound | Microphone + ADC | Same interrupt path |
+| Accelerometer (IMU) | ASIC coils + ADC | IRQ at `[0xF00860]` → ISR `0x336E4` → event code → Queue A → dispatch table → "button/shake" preset type 0x10 script (firmware's internal name; no physical button) |
+| Color sensor | ASIC coils + ADC | Same IRQ/ISR path; ADC value stashed in `0x8093E0`/`0x8093F0`, event code feeds Queue A → dispatch table → some script. Red/green/blue mapping lives in ASIC silicon or play.bin (see FIRMWARE.md "Color Sensor Input") |
+| Sound | Microphone + ADC | Same IRQ path |
+| NPM (proximity) | ASIC coils in positioning mode | Separate event with fixed hash `0xC47A2B46` → type 0x09 scripts |
 
-The magnetics scheduler at `0x801BE8` time-multiplexes the coils between tag reading, wireless charging, positioning, and sensor measurement. Sensor readings become part of the runtime state that play scripts evaluate via condition opcodes.
+The magnetics scheduler at `0x801BE8` time-multiplexes the coils between tag reading, wireless charging, positioning, and sensor measurement.
+
+**Important terminology:** The firmware internally labels preset type 0x10 "button". This is misleading — there is no physical button on the Smart Brick. Type 0x10 is triggered by IMU accelerometer threshold crossing (shake, swoosh, rotation). Documentation uses "shake", "IMU shake", or "motion" for clarity but the firmware label "button" may appear in function names and comments.
+
+**Color sensor is NOT preset type 0x10.** Color events take a separate event-code path (0x00–0x0A) via the ISR dispatch and select scripts through the 38-row table at `0x37D5A4`. Red/green/blue each produce different audio + LED reactions; none of them update gameplay state. The only state change driven by color is red→fire causing a C-level BrickNet send to other bricks, which increments the other bricks' hit counters.
 
 ### Reactive Scripting
 
@@ -1067,16 +1076,23 @@ Semantic tree: opcode 13 (if-then)
   → then-branch: opcodes 3–12 write audio command → swoosh sound
 ```
 
-**Example: color-triggered local action (laser fire on red — poll-driven)**
+**Example: color-triggered local action (laser fire on red)**
 ```
-Script #42 runs every timer tick while an X-Wing tag is active.
-Each tick, the bytecode polls sensor state:
-  if_then_else (color value in red range):
-    then-branch: emit laser-sound + LED-flash playback record
-    else-branch: emit idle-swoosh record
-The record is passed to the downstream dispatcher which plays it.
-PAwR transmission is handled separately by C firmware — the script
-does NOT invoke op21 (it's dead code in v0.72.1).
+Color sensor ISR 0x336E4 (event-driven, not polled):
+  Color sensor crosses red threshold (detection happens in ASIC silicon)
+  → IRQ bit set in [0xF00860]
+  → ISR reads ADC sample, stashes in 0x8093EE
+  → emits event code (e.g. 0x04) via callback dispatch 0x33AD8
+  → event flows into Queue A
+Dispatcher 0x18644 reads Queue A:
+  → walks 38-row table at 0x37D5A4 for matching evt=0x04 row
+  → invokes selected script via 0x6BFFE
+  → script decodes playback record using active tag's banks
+  → downstream dispatcher plays laser SFX + LED flash
+PAwR transmission for the "hits other bricks" effect is a SEPARATE
+C-level action triggered from the color-detection path (exact
+call site not yet traced). Opcode 21 bytecode is dead code —
+scripts never invoke BrickNet directly.
 ```
 
 **Example: distributed play (laser hits remote brick)**
@@ -1084,16 +1100,22 @@ does NOT invoke op21 (it's dead code in v0.72.1).
 Firing brick (C code, not bytecode):
   BrickNet coordinator builds a 25-byte PAwR packet (see FIRMWARE.md
   "BrickNet messaging" section) → transmits on its PAwR subevent.
-Receiving brick (C code):
+Receiving brick (C code — two-threshold state machine):
   0x1232C reads the incoming message byte, increments hit counter
-  at [0x80CF28+0x12]. Below threshold → emit event 0x0D or 0x0E onto
-  Queue B; the secondary dispatcher at 0x187F0 plays a hit sound
-  synchronously via direct play-engine calls.
-  At 4th hit → emit event 0x0F (explosion) onto Queue B; handler
-  plays explosion via 0x3314 → 0x165E0.
-Script #42 (already running on the receiving brick) sees the state
-flag change on its next timer tick and transitions its own output
-to the appropriate post-hit / post-explosion branch.
+  at [0x80CF28+0x12]. Two-threshold state machine:
+    Hits 1–3 (healthy): emit event 0x0D or 0x0E onto Queue B;
+      the secondary dispatcher at 0x187F0 plays a hit sound
+      synchronously via direct play-engine calls.
+    Hit 4: enter damaged state (set flag bit 2, reset counter),
+      emit event 0x0F → alarm SFX plays.
+    Hit 5 (damaged): emit 0x0D / 0x0E per hit.
+    Hit 6 (2nd hit while damaged): exit damaged (clear flag bit 2),
+      emit event 0x0C → explosion SFX via 0x3314 → 0x165E0.
+Script #42 (already running on the receiving brick) reads flag bit 2
+of [0x80CF28+0x13] each timer tick and transitions its own output
+between healthy ambience, warning/damage loop, and post-destruction
+cleanup branches.
+Observed timing: alarm at 4 hits, explosion at ~6 hits.
 ```
 
 Opcodes 16–18 (range check clamped, range check signed, equality check) are the comparison primitives used inside conditionals.
@@ -1260,7 +1282,7 @@ A single tag produces **multiple resource reference records** — one for each i
 
 Each **resource reference record** (Stream 2) independently selects a complete interaction profile: a **script** (via content_ref matching a PPL preset table param), an **animation bank** (via bank_index), and an **audio bank** (via bank_ref). A single tag produces multiple resource reference records — one for each interaction mode the tag supports. This is why tag payload sizes vary: more interaction modes = more records = more encrypted bytes.
 
-The **content identity** (Stream 1) is housekeeping — change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28`). The type_byte routes events to preset type categories (0x03=identity, 0x06=item). The preset type is an **interaction mode slot**, not a tag hardware type. A tag scan establishes the content identity at `0x809430` — this persists and is reused by all subsequent events (timer → 0x0E, button/shake → 0x10, NPM → 0x09). This is how a single tag scan enables multiple interaction modes (movement sounds, color-triggered actions, shake responses, proximity play).
+The **content identity** (Stream 1) is housekeeping — change detection (XOR comparison at `0x809430`) and PRNG seeding (`content_lo ^ content_hi` at `0x80CF28`). The type_byte routes events to preset type categories (0x03=identity, 0x06=item). The preset type is an **interaction mode slot**, not a tag hardware type. A tag scan establishes the content identity at `0x809430` — this persists and is reused by all subsequent events (timer → 0x0E, IMU shake → 0x10, NPM → 0x09). Color-sensor events take a separate ISR-driven path (see FIRMWARE.md "Color Sensor Input"). This is how a single tag scan enables multiple interaction modes: movement sounds (shake), color-triggered actions (red=fire / green=repair-SFX / blue=refuel-SFX — all audio-only, no state changes), shake responses, proximity play, and timer-scheduled combat orchestration.
 
 The tag is a **playlist** of `{script, audio_bank, animation_bank}` tuples. The brick does not need to "know about" a tag in advance — any tag that references valid ROFS content will work without a firmware update. See [FLOW.md](FLOW.md) for the full flow.
 
@@ -1315,15 +1337,15 @@ What distinguishes scripts #1, #14, #42, #54 from the rest is almost certainly s
 | 1 | 0x0B | — | System/default |
 | 14 | 0x03 | 702 | Identity script, carries the highest `cond_exec` count in its type; may handle a long-lived content-group-A loop |
 | **42** | **0x0E** | **1,564** | **Combat orchestrator** — poll-driven; reads hit counter flags, produces per-tick playback record |
-| 54 | 0x10 | 551 | Largest button script; likely handles a multi-step shake interaction |
+| 54 | 0x10 | 551 | Largest shake/IMU script; likely handles a multi-step motion interaction |
 
 Script 42 is the combat orchestrator — a type-0x0E (Timer/idle) script that runs continuously while a PAwR-combat-capable tag is active. It is by far the largest and most complex script in the file. Unlike event-triggered scripts, it is not invoked *in response to* a hit — it runs every timer tick and polls firmware state bits that the hit handlers update. (Earlier notes described script 42 as sending PAwR messages via opcode 21 `bricknet_send`; this was wrong. No byte in the interpreter translation table maps to opcode 21, so it is unreachable dead code in v0.72.1. All BrickNet send/receive is C-driven firmware, not bytecode.)
 
 **NPM/proximity scripts** (11 scripts, type 0x09):
 
-Scripts #21–#31 are **NPM positioning reaction scripts**. They respond to brick-to-brick proximity events, not tag scans or buttons. All 11 have header flag `0x40` (unique to type 0x09 and system type 0x0B). 10 of 11 are exactly 101 bytes — the same template with different audio/animation clip references. Script selection is deterministic (not random), though the exact NPM-to-script mapping is not yet fully traced.
+Scripts #21–#31 are **NPM positioning reaction scripts**. They respond to brick-to-brick proximity events, not tag scans or shakes. All 11 have header flag `0x40` (unique to type 0x09 and system type 0x0B). 10 of 11 are exactly 101 bytes — the same template with different audio/animation clip references. Script selection is deterministic (not random), though the exact NPM-to-script mapping is not yet fully traced.
 
-The remaining 43 scripts are single-brick experiences triggered by tags, buttons, timers, or idle states.
+The remaining 43 scripts are single-brick experiences triggered by tag scan, IMU shake, timer ticks, color sensor, or idle states.
 
 ### Case Study: X-Wing and Imperial Turret Tags (Inferred)
 
@@ -1428,7 +1450,7 @@ NPM events are **strictly content-signature routed**. The event builder at `0x50
 | --- | --- | --- | --- |
 | NPM proximity reactions | 0x09 | 11 | Brick detects another brick nearby |
 | PAwR combat (not distance-gated) | 0x0E (script 42) | 1 | Color sensor sees red |
-| PAwR general | 0x03, 0x0B, 0x10 | 3 | Various (tag, system, button) |
+| PAwR general | 0x03, 0x0B, 0x10 | 3 | Various (tag, system, shake/IMU) |
 
 ### Data (PAwR / BrickNet)
 

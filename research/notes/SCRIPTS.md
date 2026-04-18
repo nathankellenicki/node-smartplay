@@ -26,9 +26,9 @@ Firmware validates at `0x34530`: magic must be `\x7F PPL`, num_preset_types must
 | 0x09 | NPM | 11 | #21–#31 | Brick-to-brick proximity |
 | 0x0B | System | 3 | #32–#34 | Startup, transitions |
 | 0x0E | Timer | 16 | #35–#50 | Idle/ambient play |
-| 0x10 | Button | 7 | #51–#57 | Shake/button interaction |
+| 0x10 | Shake (IMU) | 7 | #51–#57 | Accelerometer/motion response. **No physical button exists** on the Smart Brick — the firmware's internal name "Button" refers to IMU threshold-crossed motion events (e.g. X-Wing swoosh when held and flown, turret rotation detection). |
 
-Types 0x03/0x06 are triggered by tag scan. Types 0x0E/0x10 are hardcoded by firmware (`0x50A20` for timer, `0x50A94` for button). Type 0x09 is routed from NPM proximity events. Type 0x0B is system default.
+Types 0x03/0x06 are triggered by tag scan. Types 0x0E/0x10 are hardcoded by firmware (`0x50A20` for timer, `0x50A94` for IMU shake). Type 0x09 is routed from NPM proximity events. Type 0x0B is system default. Color-sensor events are a separate ISR-driven pathway that does NOT correspond to a single preset type — see "Color sensor input" in FLOW.md.
 
 ## Script Directory (offset 0x1F8)
 
@@ -49,7 +49,7 @@ Child count ranges from 6 to 11. Flags:
 | --- | --- | --- |
 | 0x00 | Standard | Most identity, item, timer scripts |
 | 0x40 | NPM/system mode | All NPM (#21–#31), system (#32–#33) |
-| 0x50 | Special capability | Some identity, item, timer, button scripts |
+| 0x50 | Special capability | Some identity, item, timer, shake scripts |
 | 0x60 | (rare) | — |
 
 ## All 58 Scripts
@@ -134,14 +134,16 @@ Child count ranges from 6 to 11. Flags:
 
 Script #42 (1,564 bytes) is the largest script in play.bin and is the **combat orchestrator** — a timer/idle script (type 0x0E) that runs continuously while a PAwR-combat-capable tag is active. Rather than being invoked *in response to* hit events, it polls firmware state variables (hit counter at `0x80CF28+0x12`, flags at `0x80CEBE`, animation pointer at `0x80DA14`, slot arrays at `0x8089FC`) and branches its playback accordingly. Incoming PAwR fire messages update those state variables directly via the hit handlers at `0x18A12`/`0x18A3A`/`0x18AB6` — see the "Combat model" subsection below. Script #36 (1,223 bytes) is the second largest — likely a complex idle sequence with multiple audio/animation branches.
 
-### Button Scripts (type 0x10) — Shake/Button Response
+### Shake / IMU Motion Scripts (type 0x10) — Accelerometer Response
+
+(The Smart Brick has no physical button. The firmware calls this preset type "Button" internally, but the actual trigger is IMU threshold-crossed motion — X-Wing swoosh, turret rotation, Lightsaber shake, etc.)
 
 | # | Param | Size | Children | Flags | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 51 | 104 | 233 | 8 | 0x00 | |
 | 52 | 72 | 103 | 7 | 0x50 | |
 | 53 | 112 | 69 | 7 | 0x50 | |
-| 54 | 80 | 551 | 11 | 0x00 | Largest button script |
+| 54 | 80 | 551 | 11 | 0x00 | Largest shake/IMU script |
 | 55 | 88 | 159 | 8 | 0x00 | |
 | 56 | 64 | 501 | 11 | 0x00 | |
 | 57 | 96 | 239 | 8 | 0x00 | |
@@ -150,7 +152,7 @@ Script #42 (1,564 bytes) is the largest script in play.bin and is the **combat o
 
 Some params are shared across preset types, linking scripts for the same content across interaction modes. A tag carrying multiple resource reference records uses these shared params to select one script from each type:
 
-| Param | Identity | Timer | Button | NPM |
+| Param | Identity | Timer | Shake/IMU | NPM |
 | --- | --- | --- | --- | --- |
 | 64 | #5 | — | #56 | — |
 | 72 | #8 | — | #52 | — |
@@ -269,14 +271,18 @@ Script #42 does not "react to a hit event" or "fire weapons via bricknet_send" �
 
 When a PAwR-combat-capable tag is placed, script #42 (type 0x0E, timer/idle) is invoked via the timer fallback table at `0x37D42C` (hardcoded by `0x50A20`). The script then runs continuously — every timer tick re-invokes it — and reads firmware state variables to decide what to output.
 
-When an incoming PAwR fire message arrives, it is handled entirely in C code:
+When an incoming PAwR fire message arrives, it is handled entirely in C code through a two-threshold state machine at `0x1232C`:
 
-1. Counter logic at `0x1232C` reads the incoming message, increments the byte at `[0x80CF28+0x12]`, and checks against threshold 4.
-2. Below threshold: emits event `0x0D` or `0x0E` onto the secondary event queue at `0x80ce9c` (6-byte records).
-3. At threshold: sets bit 2 of flags at `[0x80CF28+0x13]` and emits event `0x0F` (explosion) onto the same queue.
-4. The secondary dispatcher at `0x187F0` runs handlers for these events:
-   - `0x18A12`/`0x18A3A` (hit): update state (animation pointer at `0x80DA14`, slot arrays at `0x8089FC`, flags at `0x80CEBE`) and call play-engine audio entries directly — `0x4B9C` (sound dispatcher), `0x47344`/`0x47124` (play-engine invocation).
-   - `0x18AB6` (explosion): calls `0x3314` → `0x165E0` with `r0=3` (the explosion SoundEvent dispatch).
+1. **Healthy state (hits 1–3):** counter at `[0x80CF28+0x12]` increments. Per-hit event `0x0D` or `0x0E` is emitted onto Queue B at `0x80ce9c`. Hit-SFX plays synchronously.
+2. **Hit 4 — entering damaged state:** counter exceeds 3. Flag bit 2 of `[0x80CF28+0x13]` is set, counter is reset to 0, event **`0x0F` (alarm)** is emitted. Alarm audio plays synchronously.
+3. **Damaged state (hit 5):** counter increments again. Per-hit event emitted.
+4. **Hit 6 — destroyed:** counter exceeds 1 in damaged state. Flag bit 2 is cleared, event **`0x0C` (explosion)** is emitted. Explosion audio plays via `0x3314` → `0x165E0` with `r0=3`.
+5. The secondary dispatcher at `0x187F0` runs handlers for these events:
+   - `0x18A12`/`0x18A3A` (hit): update state (animation pointer at `0x80DA14`, slot arrays at `0x8089FC`, flags at `0x80CEBE`) and call play-engine audio entries directly.
+   - `0x18AB6` (alarm, event 0x0F): alarm audio path.
+   - `0x1898E` (explosion, event 0x0C): explosion audio + self-chains a 6-byte record onto Queue B for continuation audio.
+
+Observed gameplay timing matches: alarm fires at 4 total hits, explosion fires at ~6 total hits (2 more after alarm).
 
 Critically, **none of these handlers invoke a script via `0x6BFFE`** (the only external call site of the interpreter). They play audio/LED synchronously and update state bits. Script #42, running on the next timer tick, observes the state change and produces different output (different decoded playback record → different audio/LED).
 
