@@ -172,7 +172,7 @@ The single format 10 clip that does NOT use register-write encoding. Instead it 
 
 ### Format 11 — Sequencer Configuration (Variant)
 
-Single clip (id=42, 354 bytes, ref=270). Uses the same register-write encoding as format 10. Fully parses as 29 monotonically-addressed records, address range 0x003C–0x044A. This is the clip referenced by PPL script #42 (PAwR combat).
+Single clip (id=42, 354 bytes, ref=270). Uses the same register-write encoding as format 10. Fully parses as 29 monotonically-addressed records, address range 0x003C–0x044A. (Earlier notes associated this clip with "PPL script #42 (PAwR combat)"; that link is unverified — it may simply share the clip id number 42 by coincidence. Combat-related audio references come from the active tag's resource-reference records, not from clip-id/script-id number matches.)
 
 ## Hierarchical Reference System
 

@@ -122,7 +122,7 @@ Child count ranges from 6 to 11. Flags:
 | 39 | 96 | 535 | 9 | 0x00 | |
 | 40 | 302 | 554 | 9 | 0x00 | |
 | 41 | 1068 | 242 | 8 | 0x00 | |
-| 42 | 24 | 1,564 | 10 | 0x00 | **Largest script — PAwR combat** |
+| 42 | 24 | 1,564 | 10 | 0x00 | **Largest script** — combat orchestrator (see below) |
 | 43 | 1228 | 363 | 9 | 0x00 | |
 | 44 | 73 | 227 | 8 | 0x00 | |
 | 45 | 1484 | 330 | 8 | 0x00 | |
@@ -132,7 +132,7 @@ Child count ranges from 6 to 11. Flags:
 | 49 | 116 | 439 | 9 | 0x00 | |
 | 50 | 1612 | 634 | 9 | 0x00 | |
 
-Script #42 (1,564 bytes) is the largest script in play.bin — PAwR combat mode with BrickNet messaging (opcode 21). Script #36 (1,223 bytes) is the second largest — likely a complex idle sequence with multiple audio/animation branches.
+Script #42 (1,564 bytes) is the largest script in play.bin and is the **combat orchestrator** — a timer/idle script (type 0x0E) that runs continuously while a PAwR-combat-capable tag is active. Rather than being invoked *in response to* hit events, it polls firmware state variables (hit counter at `0x80CF28+0x12`, flags at `0x80CEBE`, animation pointer at `0x80DA14`, slot arrays at `0x8089FC`) and branches its playback accordingly. Incoming PAwR fire messages update those state variables directly via the hit handlers at `0x18A12`/`0x18A3A`/`0x18AB6` — see the "Combat model" subsection below. Script #36 (1,223 bytes) is the second largest — likely a complex idle sequence with multiple audio/animation branches.
 
 ### Button Scripts (type 0x10) — Shake/Button Response
 
@@ -164,29 +164,127 @@ Some params are shared across preset types, linking scripts for the same content
 | 400 | #11 | — | — | #24 |
 | 432 | #7 | — | — | — |
 
-## Bytecode Encoding
+## Bytecode Semantics (verified 2026-04-18)
 
-Table-driven: a 256-byte translation table at ROM `0x37BCF4` maps each byte to an opcode handler (0–24). Multiple byte values encode the same opcode — the byte itself carries implicit operand data.
+Scripts are **typed record UNPACKERS**, not imperative gameplay bytecode. The interpreter at `0x4B830` takes four arguments:
 
-| Opcode | Encodings | Name | Description |
-| --- | --- | --- | --- |
-| 1 | 15 | cond_exec | Conditional execute |
-| 2 | 8 | eval_expr | Evaluate expression |
-| 3 | 40 | write_byte | Write byte value |
-| 4 | 24 | write_half | Write halfword (u16) |
-| 5 | 28 | write_word | Write word (u32) |
-| 6 | 4 | write_float | Write float32 |
-| 7 | 10 | write_typed | Write typed value |
-| 8 | 25 | write_typed2 | Write typed value (variant) |
-| 13 | 2 | if_then | If-then branch |
-| 14 | 9 | if_then_else | If-then-else branch |
-| 15 | 20 | counted_loop | Counted loop |
-| 19 | 1 | nested_loop | Nested loop |
-| 20 | 5 | nested_stride | Nested loop with stride |
-| 21 | — | bricknet_send | PAwR message send (`0x6CEF8`) |
-| 25 | 6 | type_dispatch | Type dispatch |
+| Register | Role |
+| --- | --- |
+| r18 | Input stream reader state (pointer to struct `{pos:u32, ...}` of typed data to parse) |
+| r17 | Input stream end pointer (for underflow checks) |
+| r15 | Output destination buffer (decoded fields accumulate here) |
+| r16 | **Bytecode** position counter (separate from input stream) |
+| r19 | `0x37BCF4` — 256-byte opcode translation table |
 
-Byte values mapping to handler IDs > 25 are inline operand data consumed by the preceding opcode.
+The dispatch loop reads `byte = TABLE[*r16]`, advances r16, and dispatches to one of 25 handler addresses. Each handler (e.g. `0x51C28` for write_byte) calls `READ_TYPED(r18, r17, expected_tag)` at `0x51F50`, which:
+
+1. Advances the **input stream** r18 by 1 byte to read a msgpack-style type tag
+2. Based on tag, reads payload bytes: `0xCC`→u8+1, `0xCD`→u16+2, `0xCE`→u32+4, `0xCF`→f32+4, `0xE1`→raw byte, `0x00`→untyped inline
+3. Writes the decoded value to r15 output buffer
+
+**Return codes:** 0=ok, 1=type mismatch, 2=unexpected nil/cond-false, 3=hash mismatch, 4=stream underflow.
+
+**What this means architecturally:**
+
+- The script bytecode is a **schema** describing *what fields* to extract and *in what order*
+- The r18 stream holds the **actual data** — decoded from a ROFS record looked up via hash table at `0x37B9A8` (decompressor call to `0x6BE00`)
+- The r15 output is a **decoded playback record** (audio refs, LED commands, timer thresholds, bank indices)
+- After the interpreter returns, the caller at `0x6BFF8+` invokes a dispatcher callback (`[r13,0x8]` indirect jump) that consumes the output buffer and drives the audio/LED subsystems
+- Different scripts for different preset types describe different record schemas; the tag's resource-reference record selects which script (schema) to apply
+
+This reconciles with the xorshift32 PRNG observation: the PRNG is used by the **downstream dispatcher** after parsing, picking among multiple variants encoded in the decoded output record — not during bytecode execution itself.
+
+### Translation Table
+
+The dispatch loop uses a 256-byte translation table at ROM `0x37BCF4` (file offset `0x75CF4`) that maps each byte value to an opcode (1–25, with 0 and >25 indicating operand data).
+
+### Complete Handler Dispatch Table
+
+All 25 handler addresses extracted from the dispatch jump table at `0x4B85E`:
+
+| Opcode | Encodings | Handler | Name | Operand bytes (fixed) |
+| --- | --- | --- | --- | --- |
+| 1  | 15 | `0x4B8E2` | cond_exec | variable |
+| 2  | 8  | `0x4B8EC` | eval_expr | variable |
+| 3  | 40 | `0x4B8F8` | write_byte | variable |
+| 4  | 24 | `0x4B904` | write_half | variable |
+| 5  | 28 | `0x4B910` | write_word | variable |
+| 6  | 4  | `0x4B91C` | write_float | variable |
+| 7  | 10 | `0x4B928` | write_typed | variable |
+| 8  | 25 | `0x4B934` | write_typed2 | variable |
+| 9  | 1  | `0x4B940` | op9_write? | variable |
+| 10 | 3  | `0x4B94C` | op10_write? | variable |
+| 11 | 14 | `0x4B958` | op11_write? | variable |
+| 12 | —  | `0x4BC1A` | op12_error | (error branch) |
+| 13 | 2  | `0x4B966` | if_then | variable + nested block |
+| 14 | 9  | `0x4B992` | if_then_else | variable + nested block |
+| 15 | 20 | `0x4B9E0` | counted_loop | 3 (iteration count + range) + nested body |
+| 16 | 1  | `0x4BA3A` | op16 | 2 |
+| 17 | 5  | `0x4BA74` | op17 | 2 |
+| 18 | 0  | `0x4BAB0` | op18 | 2 |
+| 19 | 1  | `0x4BAE6` | nested_loop | 2 + nested body |
+| 20 | 5  | `0x4BB2A` | nested_stride | 3 + nested body |
+| 21 | —  | `0x4BB7A` | bricknet_send | **dead code** — no byte value maps to op21 |
+| 22 | 2  | `0x4B8C2` | op22 | 1 |
+| 23 | 0  | `0x4BBF0` | op23 | 1 (reads one operand byte) |
+| 24 | 0  | `0x4BBFC` | op24 | 2 (reads u16 operand) |
+| 25 | 6  | `0x4BC1E` | type_dispatch | 1 (reads type byte at +1) |
+
+**Variable-length opcodes (1-14):** Occupy exactly 1 bytecode byte each. Operand values are read from the SEPARATE r18 data stream, NOT from bytecode. The byte value itself encodes part of the operand selector (40 byte values map to opcode 3 = write_byte; the encoding number distinguishes which variant).
+
+**Fixed-length opcodes (15-25):** Handler explicitly advances bytecode position via `st r0, [r16]` with `add r0, r1, N`. These are block-control opcodes (loops, dispatch, if/else). For `counted_loop` (op15): bytes[1]=count, bytes[2..3]=stride_offset (u16 LE index into table at `0x37BA00`).
+
+**Block opcodes (13, 14, 15, 19, 20, 21):** After consuming their fixed bytecode span, recursively invoke the interpreter to execute a nested body. The body is a sequence of opcodes that follows in bytecode and terminates at the first byte whose table value falls outside 1-25.
+
+**Terminators:** Any byte at an opcode position with `TABLE[byte]` outside 1-25 ends the current block. The dispatch loop at `0x4B850` checks `cmp_s r0, 0x18; bhi → exit` where `r0 = TABLE[byte] - 1`. Both `0` and values `>25` trip this and the interpreter returns 0 to the caller (block complete). Every byte in a script's bytecode is either an opcode byte, a fixed-opcode operand byte, or a terminator.
+
+### Disassembler
+
+A best-effort bytecode disassembler is available at `research/tools/disasm-bytecode.js`:
+```bash
+node research/tools/disasm-bytecode.js [script_idx]
+```
+
+Output for all 58 scripts is pre-generated in `research/analysis/disasm/`. Every script parses with 0 unknowns — the full bytecode round-trips through the opcode model. Example (script #33):
+
+```
+# Script #33 — type=sys (0x0b) param=96 size=40
+  body:
+    0x00c: counted_loop     bytes=[0x11 0xc3 0x68 0x02] count=195 stride_off=0x0268
+    0x010:   write_byte     enc#4/39   bytes=[0x10]
+    0x011:   counted_loop   bytes=[0x1b 0x08 0xb0 0x11] count=8  stride_off=0x11b0
+    0x015:     write_op11   enc#8/13   bytes=[0xd1]
+    0x016:     write_word   enc#2/27   bytes=[0x82]
+    ...
+    0x019:     — term byte=0x35 table=0xf9
+```
+
+Nesting is shown through indentation (every block opcode increases depth, every terminator decreases it). Terminators visualize block boundaries but the indentation is a linear approximation — it does NOT reflect the actual recursive execution flow, which is driven by block opcodes' count arguments at runtime.
+
+## Combat model (script #42)
+
+Script #42 does not "react to a hit event" or "fire weapons via bricknet_send" — those are earlier mistaken assumptions that the evidence does not support. Instead:
+
+**Combat is poll-driven, not event-triggered.**
+
+When a PAwR-combat-capable tag is placed, script #42 (type 0x0E, timer/idle) is invoked via the timer fallback table at `0x37D42C` (hardcoded by `0x50A20`). The script then runs continuously — every timer tick re-invokes it — and reads firmware state variables to decide what to output.
+
+When an incoming PAwR fire message arrives, it is handled entirely in C code:
+
+1. Counter logic at `0x1232C` reads the incoming message, increments the byte at `[0x80CF28+0x12]`, and checks against threshold 4.
+2. Below threshold: emits event `0x0D` or `0x0E` onto the secondary event queue at `0x80ce9c` (6-byte records).
+3. At threshold: sets bit 2 of flags at `[0x80CF28+0x13]` and emits event `0x0F` (explosion) onto the same queue.
+4. The secondary dispatcher at `0x187F0` runs handlers for these events:
+   - `0x18A12`/`0x18A3A` (hit): update state (animation pointer at `0x80DA14`, slot arrays at `0x8089FC`, flags at `0x80CEBE`) and call play-engine audio entries directly — `0x4B9C` (sound dispatcher), `0x47344`/`0x47124` (play-engine invocation).
+   - `0x18AB6` (explosion): calls `0x3314` → `0x165E0` with `r0=3` (the explosion SoundEvent dispatch).
+
+Critically, **none of these handlers invoke a script via `0x6BFFE`** (the only external call site of the interpreter). They play audio/LED synchronously and update state bits. Script #42, running on the next timer tick, observes the state change and produces different output (different decoded playback record → different audio/LED).
+
+**So the answer to "which script plays the hit sound":** none. The hit sound is played directly from the C hit handler. Script #42 orchestrates the *ongoing* combat playback (idle weapon-ready loop, post-hit state, post-explosion state), but the instantaneous hit/explosion audio is not script-produced.
+
+**Why different ships sound different** — same script #42, but the running script reads the active tag's resource-reference record to get `audio_bank_ref` / `animation_bank_ref` values. Different ships have different refs in their records. (The direct play-engine calls from hit handlers also read the same per-tag refs, so hit/explosion sounds likewise vary per ship.)
+
+**Why non-combat tags don't do this** — tags without PAwR-combat resource-reference records don't select script #42 at all, so the timer never invokes it and no combat loop runs. The hit counter still exists in firmware state but nothing reads it.
 
 ## Size Statistics
 
@@ -196,7 +294,7 @@ Byte values mapping to handler IDs > 25 are inline operand data consumed by the 
 | Header + tables | 968 bytes (4.3%) |
 | Script data | 21,722 bytes (95.7%) |
 | Avg script size | 375 bytes |
-| Largest | #42 — 1,564 bytes (PAwR combat) |
+| Largest | #42 — 1,564 bytes (combat orchestrator) |
 | Smallest | #33 — 40 bytes (system) |
 
 ## Extraction
@@ -209,7 +307,15 @@ Outputs per-script `.bin` (raw) and `.txt` (hex dump + metadata) files organized
 
 ## What We Cannot See
 
-- **Bytecode disassembly** — without the 256-byte translation table extracted from ROM, we cannot decode individual instructions. The table at `0x37BCF4` (firmware file offset `0x75CF4`) maps byte values to opcode handlers.
-- **Audio/animation clip references** — scripts reference audio clips and animation banks by index, but the inline encoding is not decoded. Identifying which clips a script triggers requires either bytecode disassembly or correlating script params with tag resource reference records.
-- **Sensor thresholds** — scripts encode accelerometer/timer thresholds inline, but we cannot extract them without bytecode decoding.
-- **PAwR combat protocol** — script #42 uses opcode 21 (bricknet_send) for brick-to-brick messaging, but the message format is encoded in the script data.
+- **Input stream contents** — the r18 stream is populated from a hash table lookup at `0x37B9A8` plus decompression at `0x6BE00`. The actual byte layout of the input data (what the decoded record fields MEAN) is defined by the ROFS payload format, which we haven't fully mapped.
+- **Audio/animation clip index semantics** — decoded records contain integer indices into banks, but the bank-to-resource mapping lives in play.bin/audio.bin/animation.bin lookup tables.
+- **Dispatcher callback** — after the interpreter returns, `[r13,0x8]` is called to consume the output. `r13` holds a context struct we haven't fully typed. Each preset type likely uses a different callback to route the decoded record to the right subsystem.
+- **Why op21 exists but is unused** — the handler code for op21 (`bricknet_send`, at `0x4BB7A`, invokes a sub-interpreter at `0x6CEF8`) is fully present in the interpreter, but no byte in the translation table at `0x37BCF4` maps to opcode 21, so it's unreachable from any bytecode. Likely a legacy feature from an earlier design where PAwR sends were script-driven; in v0.72.1 BrickNet messaging happens entirely in C code (firmware functions, not bytecode). The handler is dead code retained for possible future use.
+
+### What We CAN See (with the disassembler)
+
+- **Script structure** — header, sub-header, body layout
+- **Opcode sequence** — which opcodes each script uses and in what order
+- **Block structure** — loops, if/else branches, nested blocks
+- **Script complexity** — counts of each opcode per script
+- **Relative comparison** — we can diff scripts to see structural changes (e.g., v0.72.1 vs v0.72.33)

@@ -1,0 +1,73 @@
+# Script #0 — type=id (0x03) param=1168 size=110
+  header[0..7]: 00 6e 01 04 00 01 02 03   # size=110
+  subhdr[8..11]: 00 10 08 00   # child_count=8, flags=0x00
+  body:
+    0x00c: counted_loop     bytes=[0x50 0x11 0xa1 0x68] count=17 stride_off=0x68a1
+    0x010:   write_word     enc#9/27   bytes=[0xa0]
+    0x011:   op17             bytes=[0x21 0x4f 0x70]
+    0x014:   write_op10     enc#1/2   bytes=[0x13]
+    0x015:   write_byte     enc#28/39   bytes=[0x89]
+    0x016:   write_byte     enc#30/39   bytes=[0x91]
+    0x017:   counted_loop     bytes=[0x11 0xd1 0x7f 0x43] count=209 stride_off=0x437f
+    0x01b:     write_typed2   enc#6/24   bytes=[0x95]
+    0x01c:     write_half     enc#18/23   bytes=[0xa6]
+    0x01d:     write_byte     enc#0/39   bytes=[0x00]
+    0x01e:     write_float    enc#0/3   bytes=[0x0a]
+    0x01f:     write_op10     enc#1/2   bytes=[0x13]
+    0x020:     write_byte     enc#28/39   bytes=[0x89]
+    0x021:     write_half     enc#11/23   bytes=[0x55]
+    0x022:     write_byte     enc#29/39   bytes=[0x8f]
+    0x023:     write_half     enc#7/23   bytes=[0x41]
+    0x024:     write_op11     enc#6/13   bytes=[0xcb]
+    0x025:     write_half     enc#22/23   bytes=[0xf0]
+    0x026:     eval_expr      enc#6/7   bytes=[0x58]
+    0x027:     write_word     enc#24/27   bytes=[0xb3]
+    0x028:     write_byte     enc#6/39   bytes=[0x1c]
+    0x029:     write_word     enc#20/27   bytes=[0xaf]
+    0x02a:     write_op10     enc#0/2   bytes=[0x05]
+    0x02b:     write_byte     enc#29/39   bytes=[0x8f]
+    0x02c:     — term byte=0x32 table=0x00
+    0x02d:   — term byte=0x8a table=0x78
+    0x02e: write_half     enc#22/23   bytes=[0xf0]
+    0x02f: eval_expr      enc#6/7   bytes=[0x58]
+    0x030: write_typed2   enc#6/24   bytes=[0x95]
+    0x031: eval_expr      enc#6/7   bytes=[0x58]
+    0x032: if_then_else   enc#8/8   bytes=[0xb6]
+    0x033:   eval_expr      enc#6/7   bytes=[0x58]
+    0x034:   write_word     enc#25/27   bytes=[0xb4]
+    0x035:   eval_expr      enc#6/7   bytes=[0x58]
+    0x036:   write_op11     enc#3/13   bytes=[0xc4]
+    0x037:   eval_expr      enc#6/7   bytes=[0x58]
+    0x038:   write_word     enc#12/27   bytes=[0xa3]
+    0x039:   — term byte=0x80 table=0x00
+    0x03a: write_byte     enc#29/39   bytes=[0x8f]
+    0x03b: counted_loop     bytes=[0xe0 0x68 0xaf 0xa0] count=104 stride_off=0xa0af
+    0x03f:   write_byte     enc#18/39   bytes=[0x68]
+    0x040:   write_word     enc#20/27   bytes=[0xaf]
+    0x041:   — term byte=0x80 table=0x00
+    0x042: op17             bytes=[0x18 0xab 0x16]
+    0x045: write_typed2   enc#3/24   bytes=[0x8d]
+    0x046: write_word     enc#22/27   bytes=[0xb1]
+    0x047: write_byte     enc#18/39   bytes=[0x68]
+    0x048: counted_loop     bytes=[0xd9 0x10 0x82 0x53] count=16 stride_off=0x5382
+    0x04c:   counted_loop     bytes=[0x90 0x5c 0x29 0x25] count=92 stride_off=0x2529
+    0x050:     counted_loop     bytes=[0xc6 0x94 0x5c 0xa0] count=148 stride_off=0xa05c
+    0x054:       write_typed2   enc#7/24   bytes=[0x96]
+    0x055:       write_typed    enc#2/9   bytes=[0x20]
+    0x056:       counted_loop     bytes=[0x97 0x20 0x98 0x02] count=32 stride_off=0x0298
+    0x05a:         cond_exec      enc#0/14   bytes=[0x09]
+    0x05b:         counted_loop     bytes=[0x90 0x22 0x9a 0x02] count=34 stride_off=0x029a
+    0x05f:           — term byte=0x19 table=0x00
+    0x060:         write_word     enc#21/27   bytes=[0xb0]
+    0x061:         — term byte=0x5c table=0x00
+    0x062:       — term byte=0x29 table=0x00
+    0x063:     write_byte     enc#33/39   bytes=[0xc0]
+    0x064:     write_typed    enc#2/9   bytes=[0x20]
+    0x065:     write_word     enc#6/27   bytes=[0x9d]
+    0x066:     write_op10     enc#0/2   bytes=[0x05]
+    0x067:     write_op11     enc#7/13   bytes=[0xcc]
+    0x068:     — term byte=0x29 table=0x00
+    0x069:   write_half     enc#22/23   bytes=[0xf0]
+    0x06a:   op17             bytes=[0x21 0x98 0x12]
+    0x06d:   op17             bytes=[0x30]
+  # stats: 8 terminator(s), 0 unknown, final depth=1

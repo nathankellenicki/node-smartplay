@@ -83,15 +83,27 @@ A Vader minifig might carry resource reference records that select one script fr
 
 ### 8. Execution
 
-Once scripts are loaded, the play engine runs them as events occur:
+Once scripts are loaded, the play engine runs them. Two distinct execution modes coexist:
 
+**Event-triggered scripts** (one-shot reactions): a script is invoked, it produces a playback record, and playback completes.
 - **Tag placed** → fires the type 0x03 or 0x06 script
-- **Idle timer** → fires the type 0x0E script (firmware hardcodes preset type at `0x50A20`)
 - **Button/shake** → fires the type 0x10 script (firmware hardcodes preset type at `0x50A94`)
 - **NPM proximity** → fires the type 0x09 script (firmware routes NPM events to type 0x09)
-- **PAwR combat** → scripts with PAwR capability flag use opcode 21 to send/receive BrickNet messages
 
-Each script is a linearized semantic tree executed by the bytecode interpreter. Scripts reference audio clips and LED animations by index within the banks selected by the tag's resource references. The xorshift32 PRNG (seeded by the content identity) introduces variation — different audio clips or LED patterns each time the same event fires.
+**Timer-scheduled scripts** (continuous orchestration): while certain tags are active, a type 0x0E (timer/idle) script is invoked every tick via the timer fallback table at `0x37D42C` (hardcoded by `0x50A20`). The script runs continuously and polls firmware state — counter bytes, flag bits, animation pointers — to decide what to output each cycle.
+
+**Combat is the canonical poll-driven case.** PAwR-combat-capable tags (ship tags) select script #42 for type 0x0E. Script #42 runs on every timer tick as long as the ship tag is present. When an incoming PAwR fire message arrives, it is handled entirely in C code — **not** by invoking a new script:
+
+1. `0x1232C` increments the hit counter at `[0x80CF28+0x12]`.
+2. Below threshold (<4 hits): state flags and animation pointers updated; hit audio played synchronously via direct play-engine calls (`0x4B9C`, `0x47344`, `0x47124`).
+3. At threshold (4th hit): flag bit 2 set in `[0x80CF28+0x13]`; explosion audio played via `0x3314` → `0x165E0` with `r0=3`.
+4. Script #42, running on the next timer tick, observes the updated state and produces a different decoded playback record (post-hit or post-explosion branch), selecting different audio/animation banks from the tag's resource references.
+
+All these audio invocations — script-driven and directly-dispatched — read the *same* `audio_bank_ref` and `animation_bank_ref` values from the active tag's resource-reference records. That's why different ships (same script #42, different banks) sound and look different even though the gameplay logic is identical, and why non-combat tags (no script #42 in their resource references, no matching banks for combat audio) simply don't respond to fire events.
+
+Scripts are bytecode schemas that decode a typed input stream into a playback record — see [SCRIPTS.md](SCRIPTS.md) for the interpreter model. The xorshift32 PRNG (seeded by content identity at `0x80CF28+0`) introduces variation in the downstream dispatcher's variant selection — different characters on the same script play different audio clips each cycle.
+
+**Opcode 21 (`bricknet_send`) is dead code.** The interpreter handler at `0x4BB7A` exists but no byte in the translation table maps to it, so no script can invoke BrickNet sends. All PAwR transmission in v0.72.1 is C-driven from the BrickNet coordinator code, not from play.bin.
 
 ### 9. Tag Removal
 

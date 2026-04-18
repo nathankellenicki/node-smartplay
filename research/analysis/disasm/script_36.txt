@@ -1,0 +1,929 @@
+# Script #36 — type=timer (0x0e) param=82 size=1223
+  header[0..7]: 04 c7 01 04 00 01 02 03   # size=1223
+  subhdr[8..11]: 00 10 09 00   # child_count=9, flags=0x00
+  body:
+    0x00c: counted_loop     bytes=[0x50 0x11 0xb9 0x83] count=17 stride_off=0x83b9
+    0x010:   write_byte     enc#18/39   bytes=[0x68]
+    0x011:   write_op11     enc#9/13   bytes=[0xd2]
+    0x012:   op17             bytes=[0x21 0x4e 0x20]
+    0x015:   cond_exec      enc#2/14   bytes=[0x1e]
+    0x016:   write_float    enc#0/3   bytes=[0x0a]
+    0x017:   counted_loop     bytes=[0x90 0x41 0xd1 0xee] count=65 stride_off=0xeed1
+    0x01b:     counted_loop     bytes=[0x90 0x33 0x08 0x33] count=51 stride_off=0x3308
+    0x01f:       op17             bytes=[0x30 0xc0 0x37]
+    0x022:       write_half     enc#17/23   bytes=[0x85]
+    0x023:       write_op11     enc#3/13   bytes=[0xc4]
+    0x024:       write_byte     enc#12/39   bytes=[0x3c]
+    0x025:       — term byte=0x43 table=0x20
+    0x026:     cond_exec      enc#4/14   bytes=[0x53]
+    0x027:     write_op11     enc#7/13   bytes=[0xcc]
+    0x028:     if_then_else   enc#5/8   bytes=[0x79]
+    0x029:       write_byte     enc#14/39   bytes=[0x49]
+    0x02a:       — term byte=0x5c table=0x00
+    0x02b:     — term byte=0x43 table=0x20
+    0x02c:   write_byte     enc#24/39   bytes=[0x78]
+    0x02d:   — term byte=0x5c table=0x00
+    0x02e: write_half     enc#13/23   bytes=[0x63]
+    0x02f: counted_loop     bytes=[0xc6 0x35 0x3c 0xc7] count=53 stride_off=0xc73c
+    0x033:   if_then_else   enc#8/8   bytes=[0xb6]
+    0x034:     write_typed2   enc#6/24   bytes=[0x95]
+    0x035:     counted_loop     bytes=[0xc6 0x37 0x85 0xc8] count=55 stride_off=0xc885
+    0x039:       write_half     enc#0/23   bytes=[0x03]
+    0x03a:       nested_stride    bytes=[0xc8 0x03 0x53 0xcc] (operands)
+    0x03e:         if_then_else   enc#5/8   bytes=[0x79]
+    0x03f:           write_byte     enc#14/39   bytes=[0x49]
+    0x040:           — term byte=0x5c table=0x00
+    0x041:         — term byte=0x80 table=0x00
+    0x042:       eval_expr      enc#2/7   bytes=[0x37]
+    0x043:       write_half     enc#17/23   bytes=[0x85]
+    0x044:       write_op11     enc#5/13   bytes=[0xca]
+    0x045:       write_half     enc#0/23   bytes=[0x03]
+    0x046:       write_op11     enc#5/13   bytes=[0xca]
+    0x047:       write_half     enc#0/23   bytes=[0x03]
+    0x048:       cond_exec      enc#4/14   bytes=[0x53]
+    0x049:       write_op11     enc#7/13   bytes=[0xcc]
+    0x04a:       write_byte     enc#25/39   bytes=[0x7b]
+    0x04b:       eval_expr      enc#7/7   bytes=[0x69]
+    0x04c:       — term byte=0x5c table=0x00
+    0x04d:     write_word     enc#9/27   bytes=[0xa0]
+    0x04e:     eval_expr      enc#2/7   bytes=[0x37]
+    0x04f:     write_half     enc#17/23   bytes=[0x85]
+    0x050:     write_op11     enc#7/13   bytes=[0xcc]
+    0x051:     write_half     enc#0/23   bytes=[0x03]
+    0x052:     write_op11     enc#7/13   bytes=[0xcc]
+    0x053:     write_half     enc#0/23   bytes=[0x03]
+    0x054:     cond_exec      enc#4/14   bytes=[0x53]
+    0x055:     write_op11     enc#7/13   bytes=[0xcc]
+    0x056:     if_then_else   enc#5/8   bytes=[0x79]
+    0x057:       write_byte     enc#14/39   bytes=[0x49]
+    0x058:       — term byte=0x5c table=0x00
+    0x059:     write_byte     enc#33/39   bytes=[0xc0]
+    0x05a:     eval_expr      enc#2/7   bytes=[0x37]
+    0x05b:     write_half     enc#17/23   bytes=[0x85]
+    0x05c:     write_byte     enc#35/39   bytes=[0xce]
+    0x05d:     write_half     enc#0/23   bytes=[0x03]
+    0x05e:     write_byte     enc#35/39   bytes=[0xce]
+    0x05f:     write_half     enc#0/23   bytes=[0x03]
+    0x060:     cond_exec      enc#4/14   bytes=[0x53]
+    0x061:     write_op11     enc#7/13   bytes=[0xcc]
+    0x062:     write_byte     enc#25/39   bytes=[0x7b]
+    0x063:     eval_expr      enc#7/7   bytes=[0x69]
+    0x064:     — term byte=0x5c table=0x00
+    0x065:   counted_loop     bytes=[0xe0 0x37 0x85 0xc8] count=55 stride_off=0xc885
+    0x069:     write_op10     enc#1/2   bytes=[0x13]
+    0x06a:     nested_stride    bytes=[0xc8 0x13 0x53 0xcc] (operands)
+    0x06e:       if_then_else   enc#5/8   bytes=[0x79]
+    0x06f:         write_byte     enc#14/39   bytes=[0x49]
+    0x070:         — term byte=0x5c table=0x00
+    0x071:       write_word     enc#1/27   bytes=[0x81]
+    0x072:       eval_expr      enc#2/7   bytes=[0x37]
+    0x073:       write_half     enc#17/23   bytes=[0x85]
+    0x074:       write_op11     enc#5/13   bytes=[0xca]
+    0x075:       write_op10     enc#1/2   bytes=[0x13]
+    0x076:       write_op11     enc#5/13   bytes=[0xca]
+    0x077:       write_op10     enc#1/2   bytes=[0x13]
+    0x078:       cond_exec      enc#4/14   bytes=[0x53]
+    0x079:       write_op11     enc#7/13   bytes=[0xcc]
+    0x07a:       write_byte     enc#25/39   bytes=[0x7b]
+    0x07b:       eval_expr      enc#7/7   bytes=[0x69]
+    0x07c:       — term byte=0x5c table=0x00
+    0x07d:     write_word     enc#10/27   bytes=[0xa1]
+    0x07e:     eval_expr      enc#2/7   bytes=[0x37]
+    0x07f:     write_half     enc#17/23   bytes=[0x85]
+    0x080:     write_op11     enc#7/13   bytes=[0xcc]
+    0x081:     write_op10     enc#1/2   bytes=[0x13]
+    0x082:     write_op11     enc#7/13   bytes=[0xcc]
+    0x083:     write_op10     enc#1/2   bytes=[0x13]
+    0x084:     cond_exec      enc#4/14   bytes=[0x53]
+    0x085:     write_op11     enc#7/13   bytes=[0xcc]
+    0x086:     if_then_else   enc#5/8   bytes=[0x79]
+    0x087:       write_byte     enc#14/39   bytes=[0x49]
+    0x088:       — term byte=0x5c table=0x00
+    0x089:     nested_stride    bytes=[0xc1 0x37 0x85 0xce] (operands)
+    0x08d:       write_op10     enc#1/2   bytes=[0x13]
+    0x08e:       write_byte     enc#35/39   bytes=[0xce]
+    0x08f:       write_op10     enc#1/2   bytes=[0x13]
+    0x090:       cond_exec      enc#4/14   bytes=[0x53]
+    0x091:       write_op11     enc#7/13   bytes=[0xcc]
+    0x092:       write_byte     enc#25/39   bytes=[0x7b]
+    0x093:       eval_expr      enc#7/7   bytes=[0x69]
+    0x094:       — term byte=0x5c table=0x00
+    0x095:     — term byte=0xe1 table=0x30
+    0x096:   eval_expr      enc#2/7   bytes=[0x37]
+    0x097:   write_half     enc#17/23   bytes=[0x85]
+    0x098:   nested_stride    bytes=[0xc8 0x23 0xc8 0x23] (operands)
+    0x09c:     cond_exec      enc#4/14   bytes=[0x53]
+    0x09d:     write_op11     enc#7/13   bytes=[0xcc]
+    0x09e:     if_then_else   enc#5/8   bytes=[0x79]
+    0x09f:       write_byte     enc#14/39   bytes=[0x49]
+    0x0a0:       — term byte=0x5c table=0x00
+    0x0a1:     write_word     enc#2/27   bytes=[0x82]
+    0x0a2:     eval_expr      enc#2/7   bytes=[0x37]
+    0x0a3:     write_half     enc#17/23   bytes=[0x85]
+    0x0a4:     write_op11     enc#5/13   bytes=[0xca]
+    0x0a5:     — term byte=0x23 table=0x00
+    0x0a6:   write_op11     enc#5/13   bytes=[0xca]
+    0x0a7:   — term byte=0x23 table=0x00
+    0x0a8: cond_exec      enc#4/14   bytes=[0x53]
+    0x0a9: write_op11     enc#7/13   bytes=[0xcc]
+    0x0aa: write_byte     enc#25/39   bytes=[0x7b]
+    0x0ab: eval_expr      enc#7/7   bytes=[0x69]
+    0x0ac: — term byte=0x5c table=0x00
+    0x0ad: write_word     enc#11/27   bytes=[0xa2]
+    0x0ae: eval_expr      enc#2/7   bytes=[0x37]
+    0x0af: write_half     enc#17/23   bytes=[0x85]
+    0x0b0: write_op11     enc#7/13   bytes=[0xcc]
+    0x0b1: — term byte=0x23 table=0x00
+    0x0b2: write_op11     enc#7/13   bytes=[0xcc]
+    0x0b3: — term byte=0x23 table=0x00
+    0x0b4: cond_exec      enc#4/14   bytes=[0x53]
+    0x0b5: write_op11     enc#7/13   bytes=[0xcc]
+    0x0b6: if_then_else   enc#5/8   bytes=[0x79]
+    0x0b7:   write_byte     enc#14/39   bytes=[0x49]
+    0x0b8:   — term byte=0x5c table=0x00
+    0x0b9: cond_exec      enc#12/14   bytes=[0xc2]
+    0x0ba: eval_expr      enc#2/7   bytes=[0x37]
+    0x0bb: write_half     enc#17/23   bytes=[0x85]
+    0x0bc: write_byte     enc#35/39   bytes=[0xce]
+    0x0bd: — term byte=0x23 table=0x00
+    0x0be: write_byte     enc#35/39   bytes=[0xce]
+    0x0bf: — term byte=0x23 table=0x00
+    0x0c0: cond_exec      enc#4/14   bytes=[0x53]
+    0x0c1: write_op11     enc#7/13   bytes=[0xcc]
+    0x0c2: write_byte     enc#25/39   bytes=[0x7b]
+    0x0c3: eval_expr      enc#7/7   bytes=[0x69]
+    0x0c4: — term byte=0x5c table=0x00
+    0x0c5: — term byte=0xe2 table=0x49
+    0x0c6: eval_expr      enc#2/7   bytes=[0x37]
+    0x0c7: write_half     enc#17/23   bytes=[0x85]
+    0x0c8: nested_stride    bytes=[0xc8 0x33 0xc8 0x33] (operands)
+    0x0cc:   cond_exec      enc#4/14   bytes=[0x53]
+    0x0cd:   write_op11     enc#7/13   bytes=[0xcc]
+    0x0ce:   if_then_else   enc#5/8   bytes=[0x79]
+    0x0cf:     write_byte     enc#14/39   bytes=[0x49]
+    0x0d0:     — term byte=0x5c table=0x00
+    0x0d1:   write_word     enc#3/27   bytes=[0x83]
+    0x0d2:   eval_expr      enc#2/7   bytes=[0x37]
+    0x0d3:   write_half     enc#17/23   bytes=[0x85]
+    0x0d4:   write_op11     enc#5/13   bytes=[0xca]
+    0x0d5:   counted_loop     bytes=[0x33 0xca 0x33 0x53] count=202 stride_off=0x5333
+    0x0d9:     write_op11     enc#7/13   bytes=[0xcc]
+    0x0da:     write_byte     enc#25/39   bytes=[0x7b]
+    0x0db:     eval_expr      enc#7/7   bytes=[0x69]
+    0x0dc:     — term byte=0x5c table=0x00
+    0x0dd:   write_word     enc#12/27   bytes=[0xa3]
+    0x0de:   eval_expr      enc#2/7   bytes=[0x37]
+    0x0df:   write_half     enc#17/23   bytes=[0x85]
+    0x0e0:   write_op11     enc#7/13   bytes=[0xcc]
+    0x0e1:   counted_loop     bytes=[0x33 0xcc 0x33 0x53] count=204 stride_off=0x5333
+    0x0e5:     write_op11     enc#7/13   bytes=[0xcc]
+    0x0e6:     if_then_else   enc#5/8   bytes=[0x79]
+    0x0e7:       write_byte     enc#14/39   bytes=[0x49]
+    0x0e8:       — term byte=0x5c table=0x00
+    0x0e9:     write_op11     enc#2/13   bytes=[0xc3]
+    0x0ea:     eval_expr      enc#2/7   bytes=[0x37]
+    0x0eb:     write_half     enc#17/23   bytes=[0x85]
+    0x0ec:     write_byte     enc#35/39   bytes=[0xce]
+    0x0ed:     counted_loop     bytes=[0x33 0xce 0x33 0x53] count=206 stride_off=0x5333
+    0x0f1:       write_op11     enc#7/13   bytes=[0xcc]
+    0x0f2:       write_byte     enc#25/39   bytes=[0x7b]
+    0x0f3:       eval_expr      enc#7/7   bytes=[0x69]
+    0x0f4:       — term byte=0x5c table=0x00
+    0x0f5:     — term byte=0xe3 table=0x00
+    0x0f6:   eval_expr      enc#2/7   bytes=[0x37]
+    0x0f7:   write_half     enc#17/23   bytes=[0x85]
+    0x0f8:   nested_stride    bytes=[0xc8 0x43 0xc8 0x43] (operands)
+    0x0fc:     cond_exec      enc#4/14   bytes=[0x53]
+    0x0fd:     write_op11     enc#7/13   bytes=[0xcc]
+    0x0fe:     if_then_else   enc#5/8   bytes=[0x79]
+    0x0ff:       write_byte     enc#14/39   bytes=[0x49]
+    0x100:       — term byte=0x5c table=0x00
+    0x101:     type_dispatch    bytes=[0x84 0x37] (type=0x37)
+    0x103:     write_half     enc#17/23   bytes=[0x85]
+    0x104:     write_op11     enc#5/13   bytes=[0xca]
+    0x105:     — term byte=0x43 table=0x20
+    0x106:   write_op11     enc#5/13   bytes=[0xca]
+    0x107:   — term byte=0x43 table=0x20
+    0x108: cond_exec      enc#4/14   bytes=[0x53]
+    0x109: write_op11     enc#7/13   bytes=[0xcc]
+    0x10a: write_byte     enc#25/39   bytes=[0x7b]
+    0x10b: eval_expr      enc#7/7   bytes=[0x69]
+    0x10c: — term byte=0x5c table=0x00
+    0x10d: counted_loop     bytes=[0xa4 0x37 0x85 0xcc] count=55 stride_off=0xcc85
+    0x111:   — term byte=0x43 table=0x20
+    0x112: write_op11     enc#7/13   bytes=[0xcc]
+    0x113: — term byte=0x43 table=0x20
+    0x114: cond_exec      enc#4/14   bytes=[0x53]
+    0x115: write_op11     enc#7/13   bytes=[0xcc]
+    0x116: if_then_else   enc#5/8   bytes=[0x79]
+    0x117:   write_byte     enc#14/39   bytes=[0x49]
+    0x118:   — term byte=0x5c table=0x00
+    0x119: write_op11     enc#3/13   bytes=[0xc4]
+    0x11a: eval_expr      enc#2/7   bytes=[0x37]
+    0x11b: write_half     enc#17/23   bytes=[0x85]
+    0x11c: write_byte     enc#35/39   bytes=[0xce]
+    0x11d: — term byte=0x43 table=0x20
+    0x11e: write_byte     enc#35/39   bytes=[0xce]
+    0x11f: — term byte=0x43 table=0x20
+    0x120: cond_exec      enc#4/14   bytes=[0x53]
+    0x121: write_op11     enc#7/13   bytes=[0xcc]
+    0x122: write_byte     enc#25/39   bytes=[0x7b]
+    0x123: eval_expr      enc#7/7   bytes=[0x69]
+    0x124: — term byte=0x5c table=0x00
+    0x125: write_byte     enc#37/39   bytes=[0xe4]
+    0x126: eval_expr      enc#2/7   bytes=[0x37]
+    0x127: write_half     enc#17/23   bytes=[0x85]
+    0x128: nested_stride    bytes=[0xc8 0x53 0xc8 0x53] (operands)
+    0x12c:   cond_exec      enc#4/14   bytes=[0x53]
+    0x12d:   write_op11     enc#7/13   bytes=[0xcc]
+    0x12e:   if_then_else   enc#5/8   bytes=[0x79]
+    0x12f:     write_byte     enc#14/39   bytes=[0x49]
+    0x130:     — term byte=0x5c table=0x00
+    0x131:   write_half     enc#17/23   bytes=[0x85]
+    0x132:   eval_expr      enc#2/7   bytes=[0x37]
+    0x133:   write_half     enc#17/23   bytes=[0x85]
+    0x134:   write_op11     enc#5/13   bytes=[0xca]
+    0x135:   cond_exec      enc#4/14   bytes=[0x53]
+    0x136:   write_op11     enc#5/13   bytes=[0xca]
+    0x137:   cond_exec      enc#4/14   bytes=[0x53]
+    0x138:   cond_exec      enc#4/14   bytes=[0x53]
+    0x139:   write_op11     enc#7/13   bytes=[0xcc]
+    0x13a:   write_byte     enc#25/39   bytes=[0x7b]
+    0x13b:   eval_expr      enc#7/7   bytes=[0x69]
+    0x13c:   — term byte=0x5c table=0x00
+    0x13d: if_then_else   enc#7/8   bytes=[0xa5]
+    0x13e:   eval_expr      enc#2/7   bytes=[0x37]
+    0x13f:   — term byte=0x2c table=0x00
+    0x140: write_op11     enc#4/13   bytes=[0xc5]
+    0x141: write_byte     enc#12/39   bytes=[0x3c]
+    0x142: write_op11     enc#4/13   bytes=[0xc5]
+    0x143: — term byte=0x35 table=0xf9
+    0x144: write_byte     enc#12/39   bytes=[0x3c]
+    0x145: write_byte     enc#34/39   bytes=[0xc7]
+    0x146: type_dispatch    bytes=[0x84 0x0c] (type=0x0c)
+    0x148: write_op11     enc#4/13   bytes=[0xc5]
+    0x149: eval_expr      enc#2/7   bytes=[0x37]
+    0x14a: — term byte=0x2c table=0x00
+    0x14b: write_word     enc#27/27   bytes=[0xe5]
+    0x14c: write_byte     enc#12/39   bytes=[0x3c]
+    0x14d: write_word     enc#27/27   bytes=[0xe5]
+    0x14e: — term byte=0x35 table=0xf9
+    0x14f: write_byte     enc#12/39   bytes=[0x3c]
+    0x150: write_byte     enc#34/39   bytes=[0xc7]
+    0x151: type_dispatch    bytes=[0x84 0x0c] (type=0x0c)
+    0x153: write_word     enc#27/27   bytes=[0xe5]
+    0x154: eval_expr      enc#2/7   bytes=[0x37]
+    0x155: — term byte=0x2c table=0x00
+    0x156: if_then_else   enc#6/8   bytes=[0x86]
+    0x157:   write_byte     enc#12/39   bytes=[0x3c]
+    0x158:   if_then_else   enc#6/8   bytes=[0x86]
+    0x159:     — term byte=0x35 table=0xf9
+    0x15a:   write_byte     enc#12/39   bytes=[0x3c]
+    0x15b:   write_byte     enc#34/39   bytes=[0xc7]
+    0x15c:   type_dispatch    bytes=[0x84 0x0c] (type=0x0c)
+    0x15e:   if_then_else   enc#6/8   bytes=[0x86]
+    0x15f:     eval_expr      enc#2/7   bytes=[0x37]
+    0x160:     — term byte=0x2c table=0x00
+    0x161:   write_half     enc#18/23   bytes=[0xa6]
+    0x162:   write_byte     enc#12/39   bytes=[0x3c]
+    0x163:   write_half     enc#18/23   bytes=[0xa6]
+    0x164:   — term byte=0x35 table=0xf9
+    0x165: write_byte     enc#12/39   bytes=[0x3c]
+    0x166: write_byte     enc#34/39   bytes=[0xc7]
+    0x167: type_dispatch    bytes=[0x84 0x0c] (type=0x0c)
+    0x169: write_half     enc#18/23   bytes=[0xa6]
+    0x16a: eval_expr      enc#2/7   bytes=[0x37]
+    0x16b: — term byte=0x2c table=0x00
+    0x16c: counted_loop     bytes=[0xc6 0x3c 0xc6 0x35] count=60 stride_off=0x35c6
+    0x170:   write_byte     enc#12/39   bytes=[0x3c]
+    0x171:   write_byte     enc#34/39   bytes=[0xc7]
+    0x172:   type_dispatch    bytes=[0x84 0x0c] (type=0x0c)
+    0x174:   counted_loop     bytes=[0xc6 0x33 0x0c 0xe6] count=51 stride_off=0xe60c
+    0x178:     counted_loop     bytes=[0x33 0x0c 0x87 0x1e] count=12 stride_off=0x1e87
+    0x17c:       write_float    enc#1/3   bytes=[0x15]
+    0x17d:       — term byte=0x35 table=0xf9
+    0x17e:     write_byte     enc#1/39   bytes=[0x0c]
+    0x17f:     if_then        enc#0/1   bytes=[0x01]
+    0x180:       write_byte     enc#6/39   bytes=[0x1c]
+    0x181:       write_typed2   enc#8/24   bytes=[0xe6]
+    0x182:       write_word     enc#27/27   bytes=[0xe5]
+    0x183:       — term byte=0x35 table=0xf9
+    0x184:     — term byte=0x2c table=0x00
+    0x185:   write_typed2   enc#8/24   bytes=[0xe6]
+    0x186:   — term byte=0x92 table=0x28
+    0x187: eval_expr      enc#6/7   bytes=[0x58]
+    0x188: write_op10     enc#1/2   bytes=[0x13]
+    0x189: write_half     enc#1/23   bytes=[0x08]
+    0x18a: counted_loop     bytes=[0x33 0x18 0x34 0xa6] count=24 stride_off=0xa634
+    0x18e:   counted_loop     bytes=[0x33 0x2c 0xa6 0x92] count=44 stride_off=0x92a6
+    0x192:     eval_expr      enc#6/7   bytes=[0x58]
+    0x193:     write_half     enc#0/23   bytes=[0x03]
+    0x194:     cond_exec      enc#2/14   bytes=[0x1e]
+    0x195:     if_then_else   enc#0/8   bytes=[0x24]
+    0x196:       — term byte=0xe1 table=0x30
+    0x197:     — term byte=0x31 table=0x00
+    0x198:   — term byte=0x2c table=0x00
+    0x199: write_half     enc#18/23   bytes=[0xa6]
+    0x19a: — term byte=0x92 table=0x28
+    0x19b: — term byte=0x52 table=0xa5
+    0x19c: op17             bytes=[0x30 0xe2 0x11]
+    0x19f: nested_stride    bytes=[0xc8 0x7c 0x13 0x52] (operands)
+    0x1a3:   nested_stride    bytes=[0xc8 0x79 0x25 0x63] (operands)
+    0x1a7:     write_byte     enc#11/39   bytes=[0x38]
+    0x1a8:     write_typed2   enc#1/24   bytes=[0x34]
+    0x1a9:     — term byte=0x23 table=0x00
+    0x1aa:   type_dispatch    bytes=[0x3e 0x23] (type=0x23)
+    0x1ac:   — term byte=0x61 table=0x6f
+    0x1ad: write_op11     enc#8/13   bytes=[0xd1]
+    0x1ae: counted_loop     bytes=[0xe0 0x33 0x28 0x3f] count=51 stride_off=0x3f28
+    0x1b2:   write_float    enc#1/3   bytes=[0x15]
+    0x1b3:   — term byte=0x43 table=0x20
+    0x1b4: op17             bytes=[0x30 0x83 0x11]
+    0x1b7: cond_exec      enc#12/14   bytes=[0xc2]
+    0x1b8: — term byte=0x8a table=0x78
+    0x1b9: write_half     enc#8/23   bytes=[0x42]
+    0x1ba: cond_exec      enc#12/14   bytes=[0xc2]
+    0x1bb: write_word     enc#24/27   bytes=[0xb3]
+    0x1bc: counted_loop     bytes=[0x33 0xf1 0x5c 0xe0] count=241 stride_off=0xe05c
+    0x1c0:   write_word     enc#24/27   bytes=[0xb3]
+    0x1c1:   write_byte     enc#12/39   bytes=[0x3c]
+    0x1c2:   write_byte     enc#3/39   bytes=[0x0f]
+    0x1c3:   write_float    enc#1/3   bytes=[0x15]
+    0x1c4:   write_typed2   enc#4/24   bytes=[0x8e]
+    0x1c5:   counted_loop     bytes=[0x1b 0x33 0x2f 0x15] count=51 stride_off=0x152f
+    0x1c9:     write_typed2   enc#15/24   bytes=[0xed]
+    0x1ca:     write_byte     enc#9/39   bytes=[0x2b]
+    0x1cb:     counted_loop     bytes=[0x33 0x1f 0x15 0xcd] count=31 stride_off=0xcd15
+    0x1cf:       write_half     enc#4/23   bytes=[0x3b]
+    0x1d0:       counted_loop     bytes=[0x33 0x4f 0x15 0xad] count=79 stride_off=0xad15
+    0x1d4:         if_then_else   enc#1/8   bytes=[0x4b]
+    0x1d5:           counted_loop     bytes=[0x33 0x6f 0x15 0x8d] count=111 stride_off=0x8d15
+    0x1d9:             op17             bytes=[0x5b 0x33 0x5f]
+    0x1dc:             write_float    enc#1/3   bytes=[0x15]
+    0x1dd:             write_op11     enc#7/13   bytes=[0xcc]
+    0x1de:             write_half     enc#14/23   bytes=[0x64]
+    0x1df:             write_word     enc#13/27   bytes=[0xa8]
+    0x1e0:             — term byte=0x7f table=0xe9
+    0x1e1:           eval_expr      enc#6/7   bytes=[0x58]
+    0x1e2:           — term byte=0x5c table=0x00
+    0x1e3:         write_byte     enc#33/39   bytes=[0xc0]
+    0x1e4:         write_op11     enc#4/13   bytes=[0xc5]
+    0x1e5:         — term byte=0x5c table=0x00
+    0x1e6:       write_half     enc#9/23   bytes=[0x48]
+    0x1e7:       — term byte=0x5c table=0x00
+    0x1e8:     write_byte     enc#33/39   bytes=[0xc0]
+    0x1e9:     write_typed2   enc#6/24   bytes=[0x95]
+    0x1ea:     write_typed2   enc#3/24   bytes=[0x8d]
+    0x1eb:     write_half     enc#1/23   bytes=[0x08]
+    0x1ec:     — term byte=0x5c table=0x00
+    0x1ed:   counted_loop     bytes=[0xe0 0x95 0x8f 0x03] count=149 stride_off=0x038f
+    0x1f1:     write_byte     enc#4/39   bytes=[0x10]
+    0x1f2:     write_float    enc#3/3   bytes=[0x87]
+    0x1f3:     write_half     enc#9/23   bytes=[0x48]
+    0x1f4:     write_word     enc#27/27   bytes=[0xe5]
+    0x1f5:     write_byte     enc#38/39   bytes=[0xf5]
+    0x1f6:     write_half     enc#17/23   bytes=[0x85]
+    0x1f7:     write_op11     enc#7/13   bytes=[0xcc]
+    0x1f8:     write_byte     enc#1/39   bytes=[0x0c]
+    0x1f9:     write_half     enc#11/23   bytes=[0x55]
+    0x1fa:     write_op11     enc#3/13   bytes=[0xc4]
+    0x1fb:     write_half     enc#17/23   bytes=[0x85]
+    0x1fc:     write_op11     enc#7/13   bytes=[0xcc]
+    0x1fd:     cond_exec      enc#0/14   bytes=[0x09]
+    0x1fe:     eval_expr      enc#6/7   bytes=[0x58]
+    0x1ff:     cond_exec      enc#14/14   bytes=[0xd0]
+    0x200:     write_half     enc#17/23   bytes=[0x85]
+    0x201:     write_byte     enc#35/39   bytes=[0xce]
+    0x202:     cond_exec      enc#0/14   bytes=[0x09]
+    0x203:     eval_expr      enc#6/7   bytes=[0x58]
+    0x204:     write_half     enc#22/23   bytes=[0xf0]
+    0x205:     — term byte=0x31 table=0x00
+    0x206:   write_half     enc#1/23   bytes=[0x08]
+    0x207:   write_op11     enc#1/13   bytes=[0x74]
+    0x208:   write_typed2   enc#13/24   bytes=[0xeb]
+    0x209:   write_op10     enc#2/2   bytes=[0x4f]
+    0x20a:   eval_expr      enc#6/7   bytes=[0x58]
+    0x20b:   — term byte=0x5c table=0x00
+    0x20c: write_word     enc#1/27   bytes=[0x81]
+    0x20d: write_op11     enc#4/13   bytes=[0xc5]
+    0x20e: — term byte=0x5c table=0x00
+    0x20f: write_half     enc#9/23   bytes=[0x48]
+    0x210: — term byte=0x5c table=0x00
+    0x211: write_word     enc#1/27   bytes=[0x81]
+    0x212: write_typed2   enc#6/24   bytes=[0x95]
+    0x213: write_typed2   enc#3/24   bytes=[0x8d]
+    0x214: write_half     enc#1/23   bytes=[0x08]
+    0x215: — term byte=0x5c table=0x00
+    0x216: write_word     enc#10/27   bytes=[0xa1]
+    0x217: write_typed2   enc#6/24   bytes=[0x95]
+    0x218: write_byte     enc#29/39   bytes=[0x8f]
+    0x219: write_half     enc#0/23   bytes=[0x03]
+    0x21a: write_byte     enc#0/39   bytes=[0x00]
+    0x21b: write_float    enc#3/3   bytes=[0x87]
+    0x21c: eval_expr      enc#3/7   bytes=[0x4c]
+    0x21d: cond_exec      enc#10/14   bytes=[0x93]
+    0x21e: write_byte     enc#38/39   bytes=[0xf5]
+    0x21f: write_half     enc#17/23   bytes=[0x85]
+    0x220: write_op11     enc#7/13   bytes=[0xcc]
+    0x221: write_byte     enc#6/39   bytes=[0x1c]
+    0x222: write_half     enc#11/23   bytes=[0x55]
+    0x223: write_op11     enc#3/13   bytes=[0xc4]
+    0x224: write_half     enc#17/23   bytes=[0x85]
+    0x225: write_op11     enc#7/13   bytes=[0xcc]
+    0x226: — term byte=0x19 table=0x00
+    0x227: eval_expr      enc#6/7   bytes=[0x58]
+    0x228: cond_exec      enc#14/14   bytes=[0xd0]
+    0x229: write_half     enc#17/23   bytes=[0x85]
+    0x22a: write_byte     enc#35/39   bytes=[0xce]
+    0x22b: — term byte=0x19 table=0x00
+    0x22c: eval_expr      enc#6/7   bytes=[0x58]
+    0x22d: write_half     enc#22/23   bytes=[0xf0]
+    0x22e: — term byte=0x32 table=0x00
+    0x22f: write_half     enc#1/23   bytes=[0x08]
+    0x230: write_op11     enc#1/13   bytes=[0x74]
+    0x231: write_word     enc#20/27   bytes=[0xaf]
+    0x232: write_byte     enc#7/39   bytes=[0x1f]
+    0x233: eval_expr      enc#6/7   bytes=[0x58]
+    0x234: — term byte=0x5c table=0x00
+    0x235: write_word     enc#2/27   bytes=[0x82]
+    0x236: write_op11     enc#4/13   bytes=[0xc5]
+    0x237: — term byte=0x5c table=0x00
+    0x238: write_half     enc#9/23   bytes=[0x48]
+    0x239: — term byte=0x5c table=0x00
+    0x23a: write_word     enc#2/27   bytes=[0x82]
+    0x23b: write_typed2   enc#6/24   bytes=[0x95]
+    0x23c: write_typed2   enc#3/24   bytes=[0x8d]
+    0x23d: write_half     enc#1/23   bytes=[0x08]
+    0x23e: — term byte=0x5c table=0x00
+    0x23f: write_word     enc#11/27   bytes=[0xa2]
+    0x240: write_typed2   enc#6/24   bytes=[0x95]
+    0x241: write_byte     enc#29/39   bytes=[0x8f]
+    0x242: write_half     enc#0/23   bytes=[0x03]
+    0x243: nested_stride    bytes=[0x40 0x87 0x48 0xd0] (operands)
+    0x247:   write_byte     enc#38/39   bytes=[0xf5]
+    0x248:   write_half     enc#17/23   bytes=[0x85]
+    0x249:   write_op11     enc#7/13   bytes=[0xcc]
+    0x24a:   — term byte=0x2c table=0x00
+    0x24b: write_half     enc#11/23   bytes=[0x55]
+    0x24c: write_op11     enc#3/13   bytes=[0xc4]
+    0x24d: write_half     enc#17/23   bytes=[0x85]
+    0x24e: write_op11     enc#7/13   bytes=[0xcc]
+    0x24f: — term byte=0x29 table=0x00
+    0x250: eval_expr      enc#6/7   bytes=[0x58]
+    0x251: cond_exec      enc#14/14   bytes=[0xd0]
+    0x252: write_half     enc#17/23   bytes=[0x85]
+    0x253: write_byte     enc#35/39   bytes=[0xce]
+    0x254: — term byte=0x29 table=0x00
+    0x255: eval_expr      enc#6/7   bytes=[0x58]
+    0x256: write_half     enc#22/23   bytes=[0xf0]
+    0x257: — term byte=0x36 table=0x00
+    0x258: write_half     enc#1/23   bytes=[0x08]
+    0x259: write_op11     enc#1/13   bytes=[0x74]
+    0x25a: write_word     enc#3/27   bytes=[0x83]
+    0x25b: op17             bytes=[0x30 0x28 0x39]
+    0x25e: write_half     enc#3/23   bytes=[0x25]
+    0x25f: — term byte=0x43 table=0x20
+    0x260: write_typed    enc#2/9   bytes=[0x20]
+    0x261: write_word     enc#3/27   bytes=[0x83]
+    0x262: counted_loop     bytes=[0x33 0x08 0x7c 0x33] count=8 stride_off=0x337c
+    0x266:   counted_loop     bytes=[0x33 0x28 0x79 0x2d] count=40 stride_off=0x2d79
+    0x26a:     cond_exec      enc#4/14   bytes=[0x53]
+    0x26b:     — term byte=0x8b table=0x00
+    0x26c:   write_half     enc#0/23   bytes=[0x03]
+    0x26d:   — term byte=0x36 table=0x00
+    0x26e: write_word     enc#11/27   bytes=[0xa2]
+    0x26f: counted_loop     bytes=[0x33 0x28 0x39 0x25] count=40 stride_off=0x2539
+    0x273:   write_word     enc#9/27   bytes=[0xa0]
+    0x274:   — term byte=0x31 table=0x00
+    0x275: write_half     enc#1/23   bytes=[0x08]
+    0x276: write_typed2   enc#1/24   bytes=[0x34]
+    0x277: write_byte     enc#37/39   bytes=[0xe4]
+    0x278: op17             bytes=[0x30 0x28 0x39]
+    0x27b: write_half     enc#3/23   bytes=[0x25]
+    0x27c: write_word     enc#11/27   bytes=[0xa2]
+    0x27d: — term byte=0x28 table=0x00
+    0x27e: counted_loop     bytes=[0x90 0x28 0x7f 0x15] count=40 stride_off=0x157f
+    0x282:   — term byte=0x43 table=0x20
+    0x283: write_byte     enc#0/39   bytes=[0x00]
+    0x284: write_word     enc#3/27   bytes=[0x83]
+    0x285: counted_loop     bytes=[0x11 0x83 0x9d 0x80] count=131 stride_off=0x809d
+    0x289:   — term byte=0x28 table=0x00
+    0x28a: write_half     enc#4/23   bytes=[0x3b]
+    0x28b: counted_loop     bytes=[0x33 0x3f 0x15 0xe6] count=63 stride_off=0xe615
+    0x28f:   write_word     enc#24/27   bytes=[0xb3]
+    0x290:   — term byte=0x31 table=0x00
+    0x291: write_half     enc#23/23   bytes=[0xf1]
+    0x292: write_half     enc#12/23   bytes=[0x5a]
+    0x293: write_byte     enc#25/39   bytes=[0x7b]
+    0x294: counted_loop     bytes=[0x33 0x0f 0x15 0xc9] count=15 stride_off=0xc915
+    0x298:   counted_loop     bytes=[0x1b 0x33 0x2f 0x15] count=51 stride_off=0x152f
+    0x29c:     write_typed2   enc#12/24   bytes=[0xea]
+    0x29d:     if_then_else   enc#0/8   bytes=[0x24]
+    0x29e:       write_byte     enc#35/39   bytes=[0xce]
+    0x29f:       write_word     enc#1/27   bytes=[0x81]
+    0x2a0:       counted_loop     bytes=[0x33 0x08 0x90 0x4e] count=8 stride_off=0x4e90
+    0x2a4:         nested_loop      bytes=[0xb8 0x1f 0x58]
+    0x2a7:           — term byte=0x5c table=0x00
+    0x2a8:         eval_expr      enc#3/7   bytes=[0x4c]
+    0x2a9:         write_half     enc#11/23   bytes=[0x55]
+    0x2aa:         write_word     enc#27/27   bytes=[0xe5]
+    0x2ab:         eval_expr      enc#2/7   bytes=[0x37]
+    0x2ac:         eval_expr      enc#2/7   bytes=[0x37]
+    0x2ad:         write_half     enc#17/23   bytes=[0x85]
+    0x2ae:         counted_loop     bytes=[0xc6 0x38 0x53 0x38] count=56 stride_off=0x3853
+    0x2b2:           — term byte=0x5c table=0x00
+    0x2b3:         write_half     enc#8/23   bytes=[0x42]
+    0x2b4:         write_op11     enc#7/13   bytes=[0xcc]
+    0x2b5:         cond_exec      enc#4/14   bytes=[0x53]
+    0x2b6:         write_op10     enc#1/2   bytes=[0x13]
+    0x2b7:         counted_loop     bytes=[0xe0 0x61 0x44 0x30] count=97 stride_off=0x3044
+    0x2bb:           write_half     enc#1/23   bytes=[0x08]
+    0x2bc:           write_typed2   enc#1/24   bytes=[0x34]
+    0x2bd:           write_byte     enc#29/39   bytes=[0x8f]
+    0x2be:           counted_loop     bytes=[0xe0 0x31 0x33 0x61] count=49 stride_off=0x6133
+    0x2c2:             — term byte=0x28 table=0x00
+    0x2c3:           write_byte     enc#22/39   bytes=[0x70]
+    0x2c4:           write_byte     enc#28/39   bytes=[0x89]
+    0x2c5:           write_half     enc#0/23   bytes=[0x03]
+    0x2c6:           write_op11     enc#0/13   bytes=[0x73]
+    0x2c7:           write_byte     enc#24/39   bytes=[0x78]
+    0x2c8:           eval_expr      enc#6/7   bytes=[0x58]
+    0x2c9:           write_half     enc#22/23   bytes=[0xf0]
+    0x2ca:           eval_expr      enc#2/7   bytes=[0x37]
+    0x2cb:           — term byte=0x35 table=0xf9
+    0x2cc:         write_half     enc#17/23   bytes=[0x85]
+    0x2cd:         write_typed2   enc#3/24   bytes=[0x8d]
+    0x2ce:         nested_stride    bytes=[0x02 0xcc 0x53 0x13] (operands)
+    0x2d2:           counted_loop     bytes=[0xe0 0x61 0x4a 0xbd] count=97 stride_off=0xbd4a
+    0x2d6:             write_half     enc#1/23   bytes=[0x08]
+    0x2d7:             — term byte=0x5c table=0x00
+    0x2d8:           — term byte=0x80 table=0x00
+    0x2d9:         write_typed2   enc#6/24   bytes=[0x95]
+    0x2da:         write_typed2   enc#3/24   bytes=[0x8d]
+    0x2db:         write_half     enc#1/23   bytes=[0x08]
+    0x2dc:         — term byte=0x5c table=0x00
+    0x2dd:       write_word     enc#9/27   bytes=[0xa0]
+    0x2de:       write_typed2   enc#6/24   bytes=[0x95]
+    0x2df:       write_byte     enc#29/39   bytes=[0x8f]
+    0x2e0:       write_half     enc#0/23   bytes=[0x03]
+    0x2e1:       write_half     enc#2/23   bytes=[0x12]
+    0x2e2:       write_byte     enc#28/39   bytes=[0x89]
+    0x2e3:       cond_exec      enc#0/14   bytes=[0x09]
+    0x2e4:       write_half     enc#3/23   bytes=[0x25]
+    0x2e5:       write_word     enc#15/27   bytes=[0xaa]
+    0x2e6:       write_byte     enc#3/39   bytes=[0x0f]
+    0x2e7:       eval_expr      enc#6/7   bytes=[0x58]
+    0x2e8:       — term byte=0x5c table=0x00
+    0x2e9:     write_word     enc#3/27   bytes=[0x83]
+    0x2ea:     write_op11     enc#4/13   bytes=[0xc5]
+    0x2eb:     write_word     enc#0/27   bytes=[0x5e]
+    0x2ec:     write_half     enc#1/23   bytes=[0x08]
+    0x2ed:     — term byte=0x5c table=0x00
+    0x2ee:   write_word     enc#3/27   bytes=[0x83]
+    0x2ef:   write_typed2   enc#6/24   bytes=[0x95]
+    0x2f0:   write_typed2   enc#3/24   bytes=[0x8d]
+    0x2f1:   write_byte     enc#3/39   bytes=[0x0f]
+    0x2f2:   eval_expr      enc#6/7   bytes=[0x58]
+    0x2f3:   — term byte=0x5c table=0x00
+    0x2f4: write_word     enc#12/27   bytes=[0xa3]
+    0x2f5: write_op11     enc#4/13   bytes=[0xc5]
+    0x2f6: write_word     enc#0/27   bytes=[0x5e]
+    0x2f7: write_half     enc#1/23   bytes=[0x08]
+    0x2f8: — term byte=0x5c table=0x00
+    0x2f9: write_word     enc#12/27   bytes=[0xa3]
+    0x2fa: write_typed2   enc#6/24   bytes=[0x95]
+    0x2fb: write_byte     enc#29/39   bytes=[0x8f]
+    0x2fc: op16             bytes=[0x04 0xa9 0x63]
+    0x2ff: nested_stride    bytes=[0x02 0x89 0x09 0x25] (operands)
+    0x303:   write_word     enc#15/27   bytes=[0xaa]
+    0x304:   write_byte     enc#3/39   bytes=[0x0f]
+    0x305:   eval_expr      enc#6/7   bytes=[0x58]
+    0x306:   — term byte=0x5c table=0x00
+    0x307: write_op11     enc#2/13   bytes=[0xc3]
+    0x308: write_op11     enc#4/13   bytes=[0xc5]
+    0x309: write_word     enc#0/27   bytes=[0x5e]
+    0x30a: write_half     enc#1/23   bytes=[0x08]
+    0x30b: — term byte=0x5c table=0x00
+    0x30c: write_op11     enc#2/13   bytes=[0xc3]
+    0x30d: write_typed2   enc#6/24   bytes=[0x95]
+    0x30e: write_typed2   enc#3/24   bytes=[0x8d]
+    0x30f: write_byte     enc#3/39   bytes=[0x0f]
+    0x310: eval_expr      enc#6/7   bytes=[0x58]
+    0x311: — term byte=0x5c table=0x00
+    0x312: — term byte=0xe3 table=0x00
+    0x313: write_op11     enc#4/13   bytes=[0xc5]
+    0x314: write_word     enc#0/27   bytes=[0x5e]
+    0x315: write_half     enc#1/23   bytes=[0x08]
+    0x316: — term byte=0x5c table=0x00
+    0x317: — term byte=0xe3 table=0x00
+    0x318: write_typed2   enc#6/24   bytes=[0x95]
+    0x319: write_byte     enc#29/39   bytes=[0x8f]
+    0x31a: op16             bytes=[0x04 0xaa 0x43]
+    0x31d: — term byte=0x22 table=0x00
+    0x31e: write_byte     enc#28/39   bytes=[0x89]
+    0x31f: cond_exec      enc#0/14   bytes=[0x09]
+    0x320: write_half     enc#3/23   bytes=[0x25]
+    0x321: write_word     enc#15/27   bytes=[0xaa]
+    0x322: write_byte     enc#3/39   bytes=[0x0f]
+    0x323: eval_expr      enc#6/7   bytes=[0x58]
+    0x324: — term byte=0x5c table=0x00
+    0x325: type_dispatch    bytes=[0x84 0xc5] (type=0xc5)
+    0x327: write_word     enc#0/27   bytes=[0x5e]
+    0x328: write_half     enc#1/23   bytes=[0x08]
+    0x329: — term byte=0x5c table=0x00
+    0x32a: type_dispatch    bytes=[0x84 0x95] (type=0x95)
+    0x32c: write_typed2   enc#3/24   bytes=[0x8d]
+    0x32d: write_byte     enc#3/39   bytes=[0x0f]
+    0x32e: eval_expr      enc#6/7   bytes=[0x58]
+    0x32f: — term byte=0x5c table=0x00
+    0x330: counted_loop     bytes=[0xa4 0xc5 0x5e 0x08] count=197 stride_off=0x085e
+    0x334:   — term byte=0x5c table=0x00
+    0x335: counted_loop     bytes=[0xa4 0x95 0x8f 0x04] count=149 stride_off=0x048f
+    0x339:   write_word     enc#16/27   bytes=[0xab]
+    0x33a:   — term byte=0x23 table=0x00
+    0x33b: write_half     enc#8/23   bytes=[0x42]
+    0x33c: write_byte     enc#28/39   bytes=[0x89]
+    0x33d: cond_exec      enc#0/14   bytes=[0x09]
+    0x33e: write_half     enc#3/23   bytes=[0x25]
+    0x33f: write_word     enc#15/27   bytes=[0xaa]
+    0x340: write_byte     enc#3/39   bytes=[0x0f]
+    0x341: eval_expr      enc#6/7   bytes=[0x58]
+    0x342: — term byte=0x5c table=0x00
+    0x343: write_op11     enc#3/13   bytes=[0xc4]
+    0x344: write_op11     enc#4/13   bytes=[0xc5]
+    0x345: write_word     enc#0/27   bytes=[0x5e]
+    0x346: write_half     enc#1/23   bytes=[0x08]
+    0x347: — term byte=0x5c table=0x00
+    0x348: write_op11     enc#3/13   bytes=[0xc4]
+    0x349: write_typed2   enc#6/24   bytes=[0x95]
+    0x34a: write_typed2   enc#3/24   bytes=[0x8d]
+    0x34b: write_byte     enc#3/39   bytes=[0x0f]
+    0x34c: eval_expr      enc#6/7   bytes=[0x58]
+    0x34d: — term byte=0x5c table=0x00
+    0x34e: write_byte     enc#37/39   bytes=[0xe4]
+    0x34f: write_op11     enc#4/13   bytes=[0xc5]
+    0x350: write_word     enc#0/27   bytes=[0x5e]
+    0x351: write_half     enc#1/23   bytes=[0x08]
+    0x352: — term byte=0x5c table=0x00
+    0x353: write_byte     enc#37/39   bytes=[0xe4]
+    0x354: write_typed2   enc#6/24   bytes=[0x95]
+    0x355: write_byte     enc#29/39   bytes=[0x8f]
+    0x356: op16             bytes=[0x04 0xac 0x03]
+    0x359: cond_exec      enc#5/14   bytes=[0x62]
+    0x35a: write_byte     enc#28/39   bytes=[0x89]
+    0x35b: cond_exec      enc#0/14   bytes=[0x09]
+    0x35c: write_half     enc#3/23   bytes=[0x25]
+    0x35d: write_word     enc#14/27   bytes=[0xa9]
+    0x35e: write_byte     enc#3/39   bytes=[0x0f]
+    0x35f: eval_expr      enc#6/7   bytes=[0x58]
+    0x360: — term byte=0x5c table=0x00
+    0x361: write_half     enc#17/23   bytes=[0x85]
+    0x362: write_op11     enc#4/13   bytes=[0xc5]
+    0x363: write_word     enc#0/27   bytes=[0x5e]
+    0x364: write_half     enc#1/23   bytes=[0x08]
+    0x365: — term byte=0x5c table=0x00
+    0x366: write_half     enc#17/23   bytes=[0x85]
+    0x367: write_typed2   enc#6/24   bytes=[0x95]
+    0x368: write_typed2   enc#3/24   bytes=[0x8d]
+    0x369: write_byte     enc#3/39   bytes=[0x0f]
+    0x36a: eval_expr      enc#6/7   bytes=[0x58]
+    0x36b: — term byte=0x5c table=0x00
+    0x36c: if_then_else   enc#7/8   bytes=[0xa5]
+    0x36d:   write_op11     enc#4/13   bytes=[0xc5]
+    0x36e:   write_word     enc#0/27   bytes=[0x5e]
+    0x36f:   write_half     enc#1/23   bytes=[0x08]
+    0x370:   — term byte=0x5c table=0x00
+    0x371: if_then_else   enc#7/8   bytes=[0xa5]
+    0x372:   write_typed2   enc#6/24   bytes=[0x95]
+    0x373:   write_byte     enc#29/39   bytes=[0x8f]
+    0x374:   write_byte     enc#3/39   bytes=[0x0f]
+    0x375:   eval_expr      enc#6/7   bytes=[0x58]
+    0x376:   eval_expr      enc#6/7   bytes=[0x58]
+    0x377:   cond_exec      enc#14/14   bytes=[0xd0]
+    0x378:   write_op11     enc#4/13   bytes=[0xc5]
+    0x379:   eval_expr      enc#6/7   bytes=[0x58]
+    0x37a:   write_op11     enc#9/13   bytes=[0xd2]
+    0x37b:   — term byte=0x35 table=0xf9
+    0x37c: — term byte=0x2c table=0x00
+    0x37d: counted_loop     bytes=[0xc6 0xc2 0x58 0xb0] count=194 stride_off=0xb058
+    0x381:   eval_expr      enc#2/7   bytes=[0x37]
+    0x382:   eval_expr      enc#2/7   bytes=[0x37]
+    0x383:   write_half     enc#17/23   bytes=[0x85]
+    0x384:   write_byte     enc#29/39   bytes=[0x8f]
+    0x385:   write_half     enc#0/23   bytes=[0x03]
+    0x386:   write_op11     enc#0/13   bytes=[0x73]
+    0x387:   eval_expr      enc#6/7   bytes=[0x58]
+    0x388:   eval_expr      enc#6/7   bytes=[0x58]
+    0x389:   cond_exec      enc#14/14   bytes=[0xd0]
+    0x38a:   — term byte=0x2c table=0x00
+    0x38b: write_op11     enc#4/13   bytes=[0xc5]
+    0x38c: — term byte=0x31 table=0x00
+    0x38d: type_dispatch    bytes=[0x3e 0x06] (type=0x06)
+    0x38f: write_op10     enc#1/2   bytes=[0x13]
+    0x390: op17             bytes=[0x30 0x83 0x2c]
+    0x393: counted_loop     bytes=[0xc6 0x38 0xb0 0x31] count=56 stride_off=0x31b0
+    0x397:   counted_loop     bytes=[0x6a 0x24 0xcc 0x03] count=36 stride_off=0x03cc
+    0x39b:     write_op11     enc#0/13   bytes=[0x73]
+    0x39c:     write_byte     enc#24/39   bytes=[0x78]
+    0x39d:     eval_expr      enc#6/7   bytes=[0x58]
+    0x39e:     write_half     enc#22/23   bytes=[0xf0]
+    0x39f:     write_byte     enc#11/39   bytes=[0x38]
+    0x3a0:     cond_exec      enc#4/14   bytes=[0x53]
+    0x3a1:     write_byte     enc#11/39   bytes=[0x38]
+    0x3a2:     eval_expr      enc#6/7   bytes=[0x58]
+    0x3a3:     cond_exec      enc#14/14   bytes=[0xd0]
+    0x3a4:     — term byte=0x2c table=0x00
+    0x3a5:   write_op11     enc#4/13   bytes=[0xc5]
+    0x3a6:   — term byte=0x31 table=0x00
+    0x3a7: type_dispatch    bytes=[0x3e 0x06] (type=0x06)
+    0x3a9: write_op10     enc#1/2   bytes=[0x13]
+    0x3aa: write_word     enc#3/27   bytes=[0x83]
+    0x3ab: counted_loop     bytes=[0x33 0x33 0x30 0x6a] count=51 stride_off=0x6a30
+    0x3af:   — term byte=0x23 table=0x00
+    0x3b0: write_word     enc#13/27   bytes=[0xa8]
+    0x3b1: write_byte     enc#31/39   bytes=[0xba]
+    0x3b2: write_op10     enc#1/2   bytes=[0x13]
+    0x3b3: — term byte=0x8b table=0x00
+    0x3b4: write_half     enc#0/23   bytes=[0x03]
+    0x3b5: write_typed    enc#1/9   bytes=[0x16]
+    0x3b6: write_word     enc#11/27   bytes=[0xa2]
+    0x3b7: write_byte     enc#15/39   bytes=[0x4a]
+    0x3b8: — term byte=0x23 table=0x00
+    0x3b9: write_op10     enc#1/2   bytes=[0x13]
+    0x3ba: — term byte=0x36 table=0x00
+    0x3bb: write_op10     enc#1/2   bytes=[0x13]
+    0x3bc: op17             bytes=[0x30 0x83 0x38]
+    0x3bf: op17             bytes=[0x30 0x3c 0x31]
+    0x3c2: op17             bytes=[0x18 0x59 0xa0]
+    0x3c5: — term byte=0x28 table=0x00
+    0x3c6: counted_loop     bytes=[0x50 0xca 0x73 0x12] count=202 stride_off=0x1273
+    0x3ca:   write_half     enc#17/23   bytes=[0x85]
+    0x3cb:   — term byte=0x80 table=0x00
+    0x3cc: write_half     enc#1/23   bytes=[0x08]
+    0x3cd: write_op10     enc#1/2   bytes=[0x13]
+    0x3ce: — term byte=0x32 table=0x00
+    0x3cf: write_half     enc#17/23   bytes=[0x85]
+    0x3d0: — term byte=0x80 table=0x00
+    0x3d1: write_byte     enc#0/39   bytes=[0x00]
+    0x3d2: write_typed    enc#2/9   bytes=[0x20]
+    0x3d3: — term byte=0x28 table=0x00
+    0x3d4: — term byte=0x1a table=0x00
+    0x3d5: write_byte     enc#0/39   bytes=[0x00]
+    0x3d6: write_word     enc#1/27   bytes=[0x81]
+    0x3d7: — term byte=0x35 table=0xf9
+    0x3d8: — term byte=0x28 table=0x00
+    0x3d9: — term byte=0x19 table=0x00
+    0x3da: write_half     enc#3/23   bytes=[0x25]
+    0x3db: write_typed2   enc#10/24   bytes=[0xe8]
+    0x3dc: write_half     enc#0/23   bytes=[0x03]
+    0x3dd: write_half     enc#2/23   bytes=[0x12]
+    0x3de: write_word     enc#3/27   bytes=[0x83]
+    0x3df: — term byte=0x92 table=0x28
+    0x3e0: write_half     enc#12/23   bytes=[0x5a]
+    0x3e1: write_half     enc#0/23   bytes=[0x03]
+    0x3e2: write_byte     enc#0/39   bytes=[0x00]
+    0x3e3: write_word     enc#3/27   bytes=[0x83]
+    0x3e4: write_byte     enc#15/39   bytes=[0x4a]
+    0x3e5: — term byte=0x43 table=0x20
+    0x3e6: — term byte=0x22 table=0x00
+    0x3e7: write_word     enc#3/27   bytes=[0x83]
+    0x3e8: — term byte=0x92 table=0x28
+    0x3e9: write_word     enc#0/27   bytes=[0x5e]
+    0x3ea: write_op10     enc#1/2   bytes=[0x13]
+    0x3eb: — term byte=0x8b table=0x00
+    0x3ec: write_half     enc#0/23   bytes=[0x03]
+    0x3ed: — term byte=0x36 table=0x00
+    0x3ee: write_word     enc#11/27   bytes=[0xa2]
+    0x3ef: counted_loop     bytes=[0x33 0x08 0x33 0x33] count=8 stride_off=0x3333
+    0x3f3:   — term byte=0x28 table=0x00
+    0x3f4: write_word     enc#21/27   bytes=[0xb0]
+    0x3f5: write_half     enc#23/23   bytes=[0xf1]
+    0x3f6: write_word     enc#21/27   bytes=[0xb0]
+    0x3f7: — term byte=0x31 table=0x00
+    0x3f8: counted_loop     bytes=[0x33 0x61 0x38 0x30] count=97 stride_off=0x3038
+    0x3fc:   op17             bytes=[0x30 0x31 0xd1]
+    0x3ff:   cond_exec      enc#10/14   bytes=[0x93]
+    0x400:   counted_loop     bytes=[0x33 0x28 0x3f 0x15] count=40 stride_off=0x153f
+    0x404:     — term byte=0x43 table=0x20
+    0x405:   op17             bytes=[0x30 0x83 0x2c]
+    0x408:   if_then_else   enc#6/8   bytes=[0x86]
+    0x409:     type_dispatch    bytes=[0x3e 0xa0] (type=0xa0)
+    0x40b:     — term byte=0x2c table=0x00
+    0x40c:   write_word     enc#27/27   bytes=[0xe5]
+    0x40d:   op17             bytes=[0x30 0x6e 0xed]
+    0x410:   if_then        enc#0/1   bytes=[0x01]
+    0x411:     cond_exec      enc#2/14   bytes=[0x1e]
+    0x412:     write_typed2   enc#15/24   bytes=[0xed]
+    0x413:     write_half     enc#1/23   bytes=[0x08]
+    0x414:     nested_stride    bytes=[0x02 0xee 0xd0 0x0c] (operands)
+    0x418:       — term byte=0x23 table=0x00
+    0x419:     — term byte=0x31 table=0x00
+    0x41a:   — term byte=0x2c table=0x00
+    0x41b: write_half     enc#18/23   bytes=[0xa6]
+    0x41c: write_half     enc#23/23   bytes=[0xf1]
+    0x41d: — term byte=0x43 table=0x20
+    0x41e: write_byte     enc#3/39   bytes=[0x0f]
+    0x41f: write_typed    enc#2/9   bytes=[0x20]
+    0x420: — term byte=0x31 table=0x00
+    0x421: write_op11     enc#8/13   bytes=[0xd1]
+    0x422: — term byte=0x92 table=0x28
+    0x423: counted_loop     bytes=[0x33 0x28 0x3f 0x15] count=40 stride_off=0x153f
+    0x427:   — term byte=0x43 table=0x20
+    0x428: op17             bytes=[0x30 0x83 0x2c]
+    0x42b: if_then_else   enc#6/8   bytes=[0x86]
+    0x42c:   counted_loop     bytes=[0x33 0x6e 0x8d 0x01] count=110 stride_off=0x018d
+    0x430:     cond_exec      enc#2/14   bytes=[0x1e]
+    0x431:     write_typed2   enc#3/24   bytes=[0x8d]
+    0x432:     write_half     enc#1/23   bytes=[0x08]
+    0x433:     nested_stride    bytes=[0x02 0xe8 0xd0 0x0c] (operands)
+    0x437:       — term byte=0x23 table=0x00
+    0x438:     counted_loop     bytes=[0x33 0x2c 0xa6 0xf1] count=44 stride_off=0xf1a6
+    0x43c:       — term byte=0x43 table=0x20
+    0x43d:     write_byte     enc#7/39   bytes=[0x1f]
+    0x43e:     write_typed    enc#2/9   bytes=[0x20]
+    0x43f:     write_half     enc#16/23   bytes=[0x72]
+    0x440:     write_op11     enc#2/13   bytes=[0xc3]
+    0x441:     write_byte     enc#33/39   bytes=[0xc0]
+    0x442:     write_typed2   enc#3/24   bytes=[0x8d]
+    0x443:     write_half     enc#22/23   bytes=[0xf0]
+    0x444:     counted_loop     bytes=[0xe0 0xa7 0xe0 0xab] count=167 stride_off=0xabe0
+    0x448:       write_byte     enc#2/39   bytes=[0x0e]
+    0x449:       write_float    enc#0/3   bytes=[0x0a]
+    0x44a:       write_word     enc#8/27   bytes=[0x9f]
+    0x44b:       write_byte     enc#20/39   bytes=[0x6e]
+    0x44c:       write_float    enc#0/3   bytes=[0x0a]
+    0x44d:       write_word     enc#8/27   bytes=[0x9f]
+    0x44e:       write_word     enc#9/27   bytes=[0xa0]
+    0x44f:       counted_loop     bytes=[0xe0 0xa9 0xf8 0x0e] count=169 stride_off=0x0ef8
+    0x453:         write_float    enc#0/3   bytes=[0x0a]
+    0x454:         write_word     enc#8/27   bytes=[0x9f]
+    0x455:         write_byte     enc#33/39   bytes=[0xc0]
+    0x456:         counted_loop     bytes=[0xe0 0xa9 0x97 0xe0] count=169 stride_off=0xe097
+    0x45a:           write_word     enc#14/27   bytes=[0xa9]
+    0x45b:           write_word     enc#4/27   bytes=[0x9b]
+    0x45c:           write_byte     enc#2/39   bytes=[0x0e]
+    0x45d:           write_float    enc#0/3   bytes=[0x0a]
+    0x45e:           write_word     enc#4/27   bytes=[0x9b]
+    0x45f:           write_word     enc#9/27   bytes=[0xa0]
+    0x460:           counted_loop     bytes=[0xe0 0xa9 0xbe 0x0e] count=169 stride_off=0x0ebe
+    0x464:             write_float    enc#0/3   bytes=[0x0a]
+    0x465:             write_word     enc#4/27   bytes=[0x9b]
+    0x466:             — term byte=0x80 table=0x00
+    0x467:           counted_loop     bytes=[0xe0 0xa9 0xbc 0x0e] count=169 stride_off=0x0ebc
+    0x46b:             write_float    enc#0/3   bytes=[0x0a]
+    0x46c:             write_word     enc#8/27   bytes=[0x9f]
+    0x46d:             write_byte     enc#27/39   bytes=[0x7e]
+    0x46e:             write_float    enc#0/3   bytes=[0x0a]
+    0x46f:             write_word     enc#8/27   bytes=[0x9f]
+    0x470:             write_word     enc#21/27   bytes=[0xb0]
+    0x471:             counted_loop     bytes=[0xe0 0xa9 0xf9 0x0e] count=169 stride_off=0x0ef9
+    0x475:               write_float    enc#0/3   bytes=[0x0a]
+    0x476:               write_word     enc#8/27   bytes=[0x9f]
+    0x477:               cond_exec      enc#14/14   bytes=[0xd0]
+    0x478:               counted_loop     bytes=[0xe0 0xa9 0x9e 0x0e] count=169 stride_off=0x0e9e
+    0x47c:                 write_float    enc#0/3   bytes=[0x0a]
+    0x47d:                 write_word     enc#6/27   bytes=[0x9d]
+    0x47e:                 write_byte     enc#27/39   bytes=[0x7e]
+    0x47f:                 write_float    enc#0/3   bytes=[0x0a]
+    0x480:                 — term byte=0x99 table=0xeb
+    0x481:               write_byte     enc#33/39   bytes=[0xc0]
+    0x482:               counted_loop     bytes=[0xe0 0xa9 0x9a 0x0e] count=169 stride_off=0x0e9a
+    0x486:                 write_float    enc#0/3   bytes=[0x0a]
+    0x487:                 — term byte=0x99 table=0xeb
+    0x488:               cond_exec      enc#14/14   bytes=[0xd0]
+    0x489:               counted_loop     bytes=[0xe0 0xa9 0x98 0x0e] count=169 stride_off=0x0e98
+    0x48d:                 write_float    enc#0/3   bytes=[0x0a]
+    0x48e:                 write_word     enc#4/27   bytes=[0x9b]
+    0x48f:                 write_byte     enc#27/39   bytes=[0x7e]
+    0x490:                 write_float    enc#0/3   bytes=[0x0a]
+    0x491:                 write_word     enc#4/27   bytes=[0x9b]
+    0x492:                 write_word     enc#21/27   bytes=[0xb0]
+    0x493:                 counted_loop     bytes=[0xe0 0xa9 0xb9 0x0e] count=169 stride_off=0x0eb9
+    0x497:                   write_float    enc#0/3   bytes=[0x0a]
+    0x498:                   write_word     enc#4/27   bytes=[0x9b]
+    0x499:                   cond_exec      enc#14/14   bytes=[0xd0]
+    0x49a:                   counted_loop     bytes=[0xe0 0xa9 0xd9 0x0e] count=169 stride_off=0x0ed9
+    0x49e:                     write_float    enc#0/3   bytes=[0x0a]
+    0x49f:                     write_word     enc#6/27   bytes=[0x9d]
+    0x4a0:                     cond_exec      enc#14/14   bytes=[0xd0]
+    0x4a1:                     counted_loop     bytes=[0xe0 0xa9 0xd8 0x0e] count=169 stride_off=0x0ed8
+    0x4a5:                       write_float    enc#0/3   bytes=[0x0a]
+    0x4a6:                       write_word     enc#6/27   bytes=[0x9d]
+    0x4a7:                       write_byte     enc#33/39   bytes=[0xc0]
+    0x4a8:                       counted_loop     bytes=[0xe0 0xa9 0xdb 0x0e] count=169 stride_off=0x0edb
+    0x4ac:                         write_float    enc#0/3   bytes=[0x0a]
+    0x4ad:                         — term byte=0x99 table=0xeb
+    0x4ae:                       counted_loop     bytes=[0x90 0xe0 0xa9 0xda] count=224 stride_off=0xdaa9
+    0x4b2:                         write_byte     enc#1/39   bytes=[0x0c]
+    0x4b3:                         write_half     enc#1/23   bytes=[0x08]
+    0x4b4:                         counted_loop     bytes=[0xd9 0x24 0x87 0x09] count=36 stride_off=0x0987
+    0x4b8:                           — term byte=0xe2 table=0x49
+    0x4b9:                         write_half     enc#3/23   bytes=[0x25]
+    0x4ba:                         — term byte=0x9a table=0x00
+    0x4bb:                       — term byte=0x22 table=0x00
+    0x4bc:                     — term byte=0x29 table=0x00
+    0x4bd:                   write_word     enc#23/27   bytes=[0xb2]
+    0x4be:                   counted_loop     bytes=[0x2a 0x85 0x9c 0x22] count=133 stride_off=0x229c
+    0x4c2:                     write_word     enc#16/27   bytes=[0xab]
+    0x4c3:                     counted_loop     bytes=[0xe0 0x9d 0x22 0x30] count=157 stride_off=0x3022
+  # stats: 170 terminator(s), 0 unknown, final depth=11

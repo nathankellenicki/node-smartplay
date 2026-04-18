@@ -1,6 +1,39 @@
 # LEGO Smart Play — Firmware
 
-> Sourced from binary analysis of firmware images extracted from the Bilbo backend, and disassembly of v0.72.1 code segment using the ARC GNU toolchain. May contain errors.
+> Sourced from binary analysis of firmware images extracted from the Bilbo backend, disassembly of v0.72.1 code segment using the ARC GNU toolchain, and a physical flash dump from a v2.29.2 brick (W25Q16JWBY external SPI flash). May contain errors.
+
+## External SPI Flash Layout (W25Q16JWBY, 2MB)
+
+The EM9305 has internal flash for code and uses an external W25Q16JWBY (Winbond 16Mbit SPI flash) for data storage. Layout from a physical dump:
+
+| Region | Offset | Size | Contents |
+| --- | --- | --- | --- |
+| Header + Partition Table | `0x000000` | 4KB | Magic `PTg` (0x505467E1), partition table, code version string |
+| **PARM** | `0x001000` | 8KB | Persistent device parameters (BLE bond data, ~48 bytes high-entropy + wear-leveling KV records) |
+| **TELM** | `0x003000` | 8KB | Telemetry / crash logs (empty on healthy brick) |
+| **FWUP** | `0x005000` | 1MB | Firmware update staging — may contain stale audio data or OTA cache |
+| **ROFS** | `0x105000` | ~1MB | Decompressed ROFS filesystem (play.bin, audio.bin, animation.bin, version manifest) |
+
+**Partition table structure** (at flash offset 0x0):
+```
+Bytes 0-3:    Magic "PTg\xe1" (0x505467E1)
+Bytes 4-7:    Version / flags
+Bytes 8-31:   Entries (12 bytes each: 4-byte name + 4-byte offset + 4-byte size)
+Bytes 56-71:  Code version string ("v2.29.2\0...")
+```
+
+The partition table is **read by host tools / bootloader only** — no runtime references in the EM9305 firmware disassembly. Partition offsets are hardcoded into the running firmware code.
+
+**External flash SPI peripheral:** Base `0xF02C00` (distinct from coil/ASIC SPI at `0xF04xxx`)
+- `0xF02C00` — Control register (bit 16 = CS)
+- `0xF02C08` — Status/busy flag
+- `0xF02C24` — RX FIFO
+- Flash driver: generic transfer primitive at `0x3A43C`, page program at `0x19410`, sector erase at `0x18450`, read status at `0x351C4`, read data at `0x35258`
+
+**Version distinction:**
+- **Code version** (e.g. `v2.29.2`): EM9305 firmware binary version, stored in flash partition header
+- **ROFS content version** (e.g. `v0.72.33`): Content version, stored in ROFS version manifest
+- These version numbers are independent — a single code version can ship with multiple ROFS content versions
 
 ## Container Format
 
@@ -82,13 +115,25 @@ Zlib-compressed read-only filesystem.
 
 Each file is preceded by a 72-byte header: 64-byte filename (null-padded ASCII) + 8-byte content hash. Files pack contiguously (header → content → header → content → ...) with a single `0xFF` trailing byte.
 
-The `version` file is a plaintext manifest with the firmware version and 64-bit hashes of each file:
+The `version` file manifests are interesting. The file header for `version` has 64 bytes of **high-entropy data** in place of a normal filename — almost certainly an **ECDSA P-256 signature** (64 bytes = P-256 signature size) over the ROFS content, followed by a 12-byte descriptor, then "META\0\0\0\0version" and padding. The signature is identical between v0.72.1 and v0.72.33 ROFS content, suggesting the same signing key.
+
+**v0.72.1 version manifest:**
 ```
 0.72.1
 play.bin:0x97C6D1D9024B4427
 audio.bin:0xAA8C2DE61258F454
 animation.bin:0xDB081D8D66AC9643
 ```
+
+**v0.72.33 version manifest (from flash dump, shipped with code v2.29.2):**
+```
+0.72.33
+play.bin:0x2AD1CF262E5C9CF4
+audio.bin:0xAA8C2DE61258F454
+animation.bin:0xDB081D8D66AC9643
+```
+
+Notable: play.bin changed (+152 bytes, different hash — new scripts), audio.bin and animation.bin unchanged.
 
 ### play.bin — PPL (Play Preset Library)
 
@@ -260,7 +305,7 @@ Ghidra 12.0.4 does **not** have ARC/ARCv2 processor support. Open PRs (#3006, #3
 
 **Play event handler** (`0x52588`): Entry point for incoming content events. Validates content type against registry at `0x80B5DC`, resolves ROFS content via `0x40F88`, calls `0x16B64` to start the play engine dispatch loop.
 
-**Semantic tree executor** (`0x4B830`, ~493 lines): 25-entry switch table via `bi [r0]` at `0x4B85A`, opcodes from table at `0x37BCF4`. Recursive tree walker processing play script nodes from `play.bin`. Opcodes: 1–2 (control/conditional), 3–12 (data writes — byte/halfword/word/float/typed), 13–14 (if-then, if-then-else), 15/19–20 (loops), 16–18 (comparisons), **21 (distributed execute — BrickNet send via `0x6CEF8` or local)**, 23–24 (parameterized recurse), 25 (typed store dispatch).
+**Semantic tree executor** (`0x4B830`, ~493 lines): 25-entry switch table via `bi [r0]` at `0x4B85A`, opcodes dispatched via the 256-byte translation table at `0x37BCF4`. Opcodes: 1–2 (control/conditional), 3–12 (typed data writes — byte/halfword/word/float/typed read from a separate r18 data stream, output to r15 buffer), 13–14 (if-then, if-then-else), 15/19–20 (counted/stride loops), 16–18 (comparisons), **21 (`bricknet_send` handler at `0x4BB7A`, fully compiled but no byte in the translation table maps to it — unreachable dead code in v0.72.1)**, 22–24 (parameterized recurse), 25 (typed store dispatch). The executor has exactly ONE external caller (`0x6BFFE`); all other references are internal recursive invocations for block opcodes. See [SCRIPTS.md](SCRIPTS.md) for the typed-schema interpreter model.
 
 **Assert / fault handler** (`0x3B1D4`): Called from **931 assert points** across the firmware. Stores magic `0xDEADDD00` at `0x80F470` with hash, line number, PC, and severity. Sends fault notification over BLE via `0x6BE40`.
 
@@ -655,17 +700,17 @@ On boot, `0x151AC` reads flash for a previously saved PAwR session (2 storage sl
 
 If a valid session exists with 2+ peers, PAwR coordinator mode resumes automatically. Otherwise, the brick may join as a responder (`0x2BB88` sets bit 2 of `0x80195A`).
 
-#### Semantic Tree Integration
+#### Semantic Tree Integration (none — BrickNet is C-only in v0.72.1)
 
-The semantic tree executor at `0x4B830` has **opcode 21** (`0x4BB7A`) which calls `0x6CEF8` — BrickNet transport message send. This allows play bytecode in `play.bin` to send messages between bricks over an established PAwR session. The bytecode sends data but does not initiate PAwR itself — activation happens at the content-type level.
+Earlier documentation claimed the semantic tree executor's opcode 21 (`bricknet_send`, handler at `0x4BB7A`) was used by play.bin to send BrickNet messages. This was wrong: **no byte in the 256-byte translation table at `0x37BCF4` maps to opcode 21**, so the handler is unreachable from any bytecode. It is fully compiled dead code, likely retained from an earlier design in which scripts drove PAwR sends.
 
-`0x6CEF8` is a 13-opcode sub-interpreter for BrickNet message serialization (variable-length messages, base table at `0x37BCF4`). Opcodes: 0=skip, 1=recursive call, 2–6=advance by data size (byte/half/word/3/4 bytes), 7=count-prefixed loop, 8–11=advance 2–3 bytes, 12=variable-length with recursion.
+All BrickNet messaging in v0.72.1 is firmware C code, not bytecode:
 
-**BrickNet message construction** (`0x6D0E4`): Reads session type from offset 58, computes offset 63 value (3 or 4), calls `0x6E3FC` (prepare buffer), gets 25-byte buffer via `0x6D6F8`, writes opcode 3 at offset 8, copies **16 bytes of semantic tree state** to offset 9, sends via `0x6E374`. The 25-byte packet is: 8-byte header + 1-byte opcode + 16-byte serialized tree state.
+- **Message construction** (`0x6D0E4`): Reads session type from offset 58, computes offset 63 value (3 or 4), calls `0x6E3FC` (prepare buffer), gets 25-byte buffer via `0x6D6F8`, writes opcode 3 at offset 8, copies 16 bytes of state to offset 9, sends via `0x6E374`. The 25-byte packet is: 8-byte header + 1-byte opcode + 16-byte serialized state.
+- **Message encryption** (`0x6D188`): Reads session type from offset 58, channel from offset 61. XOR-encrypts payload bytes using key bytes from struct+0x20. Sends via `0x172B8` (BLE HCI command). Message type `0x092B` = play state, `0x1F` = control, `0x2E` = variable-length content.
+- **Message receive**: Incoming PAwR responses are decrypted and deserialized in C. The resulting state change is written directly to the PPL state struct at `0x80CF28` (hit counter at `+0x12`, flags at `+0x13`) by the counter function at `0x1232C`. See the "Hit counter / combat state machine" section below.
 
-**BrickNet message encryption** (`0x6D188`): Reads session type from offset 58, channel from offset 61. XOR-encrypts payload bytes using key bytes from struct+0x20. Sends via `0x172B8` (BLE HCI command). Message type `0x092B` = play state, `0x1F` = control, `0x2E` = variable-length content.
-
-**BrickNet message receive**: Incoming PAwR responses are decrypted, deserialized back to tree state, and fed into the PPL counter system at `0x66990` as "other" events. The play state machine at `0x6F178` processes the resulting state transition.
+The `0x6CEF8` sub-interpreter (13 opcodes, variable-length message serialization with base table at `0x37BCF4`) exists and is entered from the dead `bricknet_send` handler — also effectively dead in v0.72.1.
 
 #### Hardware Interrupt Path (`0x17C20`)
 
@@ -840,60 +885,118 @@ Each resource reference record independently selects a complete interaction prof
 
 A **xorshift32 PRNG** at `0x1E5D2` (seeded by content_lo ^ content_hi at `0x80CF28`) introduces variation **within** scripts — generating random bytes dispatched as events (handler ID `0x0F`, type 4) that control which audio clips and LED patterns play. Different characters running the same script produce different variation sequences, making characters feel distinct even when sharing scripts. See [FLOW.md](FLOW.md) for the full tag→play engine flow.
 
-#### Event Dispatch Table (0x37D5A4)
+#### Play Engine Event Dispatch
 
-A **38-entry dispatch table** at ROM address `0x37D5A4` (7 bytes/entry, 266 bytes total) drives the play engine's event routing. The dispatch function at `0x18644` processes events from a 2-entry circular ring buffer in the PPL state struct at `0x80CF28`.
+The play engine has **two independent event queues and two dispatchers**, serving different purposes:
 
-**PPL State Struct** at `0x80CF28`:
+##### Queue A — short events (1-byte codes, script dispatch)
+
+- **Data**: `0x80CF30` (4-slot 1-byte ring)
+- **Head/tail pointers**: `0x80CF34` / `0x80CF35`
+- **Producer**: `0x187C0` — pushes 1 byte per event
+- **Consumer / dispatcher**: `0x18644`
+- **Target**: the 38-entry dispatch table at `0x37D5A4`, and the timer fallback table at `0x37D42C`
+- **Event code range**: `0x00–0x05` (only these match the dispatch table's `evt` column)
+
+##### Queue B — long events (6-byte records, state machine)
+
+- **Data**: `0x80CE9C` (32-byte ring of 6-byte records)
+- **Head/tail pointers**: `0x80CEBC` / `0x80CEBD`
+- **Producer**: `0x12BEC` / `0xFE90` (both push a full 6-byte record)
+- **Consumer**: `0x187F0` (18-entry `bi [r0]` jump table keyed by the record's first byte, event IDs `0x00–0x11`)
+- **Advance helpers**: `0x12BC8` (+1 byte), `0x12BA0` (+6 bytes = one record)
+- **Event code range**: `0x00–0x11` (18 handlers including hit events `0x0C`/`0x0D`/`0x0E`/`0x0F`)
+
+Queue B does **not** feed Queue A, and the secondary dispatcher at `0x187F0` does **not** invoke scripts via `0x6BFFE` (the interpreter's sole external caller). The two queues are independent event systems.
+
+##### PPL State Struct at `0x80CF28` (used by `0x18644`)
 
 | Offset | Size | Field |
 | --- | --- | --- |
 | +0x00 | 4 | XOR key (content_lo ^ content_hi) — also xorshift32 PRNG state |
-| +0x04 | 1 | type_A (primary content type) |
-| +0x05 | 1 | type_B (secondary content type) |
-| +0x08 | 2 | Event ring buffer (2-entry circular) |
-| +0x0C | 1 | Ring buffer read pointer |
-| +0x0D | 1 | Ring buffer write pointer |
-| +0x13 | 1 | Condition flags byte 1 |
+| +0x04 | 1 | `match_lo` — content-identity match byte, compared against entry bytes[0] |
+| +0x05 | 1 | `match_hi` — content-identity match byte, compared against entry bytes[1] |
+| +0x08 | 4 | Queue A data slots (4×1 byte) |
+| +0x0C | 1 | Queue A producer tail |
+| +0x0D | 1 | Queue A consumer head |
+| +0x12 | 1 | **Combat hit counter** (see hit counter section below) |
+| +0x13 | 1 | Condition / combat flags byte 1 (bit 2 = "in hit state") |
 | +0x14 | 1 | Condition flags byte 2 |
 | +0x15 | 1 | Condition flags byte 3 |
 
-**7-byte entry format:**
+##### Main dispatcher `0x18644` → 38-entry table at `0x37D5A4`
+
+**7-byte entry format (corrected):**
 
 | Byte | Field | Description |
 | --- | --- | --- |
-| [0] | type_A_filter | Primary content type to match (0 = wildcard) |
-| [1] | type_B_filter | Secondary type filter (0 = wildcard path, nonzero = strict match both) |
-| [2] | event_type | Must exactly match event from ring buffer |
-| [3] | target_type / ref_low | Target content type for post-match; also low byte of 16-bit ref |
-| [4] | ref_high | High byte of 16-bit reference: `(entry[4] << 8) \| entry[3]` |
-| [5] | script_index | Passed directly to `set_script()` at `0x1ED4` (range 0–32) |
-| [6] | condition_code | Index into condition evaluator jump table at `0x1BE90` (18 cases, 0 = disabled) |
+| [0] | `match_lo` | Content-identity filter, compared against `[0x80CF2C]` (0 = wildcard) |
+| [1] | `match_hi` | Content-identity filter, compared against `[0x80CF2D]` (0 = don't-care) |
+| [2] | `evt_code` | Must exactly match the byte dequeued from Queue A |
+| [3] | `ref_lo` | Low byte of 16-bit content reference |
+| [4] | `ref_hi` | High byte: ref16 = `(entry[4] << 8) | entry[3]` |
+| [5] | `script_index` | Passed to `set_script()` at `0x1ED4` |
+| [6] | `cond_code` | Index into condition evaluator jump table at `0x1BE90` |
+
+**Earlier-documented labels corrected:** `type_A_filter` and `type_B_filter` for bytes [0]/[1] were misidentifications. These bytes are content-identity match filters, keyed off the decrypted tag identity at `0x807A60` (which flows to `0x80CF2C`/`0x80CF2D`). The fact that some values in these columns collide numerically with hit event IDs (0x0C, 0x0D, 0x0E) is coincidence — they are NOT event IDs.
 
 **Matching algorithm** (at `0x1867C`, loop counter r12 = 0x26 = 38):
-1. Read event from ring buffer (masked `& 0x1`)
-2. For each of 38 entries (stride 7: `mpy r17,r8,0x7`):
-   - entry[2] must match event_type exactly
-   - If entry[1] != 0: strict path — both entry[0] == type_A AND entry[1] == type_B required
-   - If entry[1] == 0 AND entry[0] == 0: full wildcard (matches any type)
-   - If entry[1] == 0 AND entry[0] != 0: match type_A directly, or hierarchy walk (dead code in v0.72.1)
-3. On match: evaluate condition via jump table at `0x1BE90` using entry[6]
-4. On condition pass: call `set_script(entry[5])` at `0x1ED4`, optionally update type_A/type_B
+1. Dequeue event byte from Queue A (only values 0x00–0x05 ever match).
+2. For each of 38 entries (stride 7):
+   - `entry[2]` must equal the dequeued event byte
+   - `entry[0]` must equal `[0x80CF2C]` (or `entry[0] == 0` as wildcard)
+   - `entry[1]` must equal `[0x80CF2D]` (or `entry[1] == 0` as don't-care)
+3. On match: evaluate condition via jump table at `0x1BE90` using `entry[6]`.
+4. On condition pass: call `set_script(entry[5])`, which is where invocation ultimately reaches `0x6BFFE` → interpreter `0x4B830`.
 
 **Condition evaluator** (`0x1BE90`): 18-case `bih` jump table evaluating PPL state flags:
 - 0: always disabled
 - 1: `(state[+0x13] & 0x02) >> 1`
-- 2: sign bit of state[+0x14]
-- 4: `(state[+0x13] & 0x82) == 0x82`
+- 2: sign bit of `state[+0x14]`
+- 4: `(state[+0x13] & 0x82) == 0x82` (combat hit-state check — bit 7 + bit 1)
 - 5: `!(state[+0x13] & 0x78)` (bits 3–6 clear)
 - 7: `(state[+0x13] & 0x01)`
 - 8: `(state[+0x15] & 0x02) == 0`
 
-**Post-match processing** (`0x186CE`–`0x18770`): If `ref16 = (entry[4] << 8) | entry[3]` >= 256, calls `content_lookup()` at `0x24F90` to resolve against a **19-entry content lookup table** at `0x37D4C4` (4 bytes/entry: `[typeA][typeB][byte2][byte3]`). Result updates type_A/type_B in the state struct.
+Several condition codes read the same `+0x13` byte that the combat state machine writes. This is how the poll-driven combat loop works: script #42's invocation line in the dispatch table has a `cond_code` that reads the hit-state bit, and each timer tick re-evaluates the condition and selects the appropriate script branch.
 
-**xorshift32 PRNG** (`0x1E5D2`): Mutates the XOR key in-place at `0x80CF28+0` using shifts 13, 17, 5. Generates 3 random bytes dispatched as events (handler ID `0x0F`, type 4). This introduces per-playback variation in audio clip and LED pattern selection **within** the selected script.
+##### Timer fallback table at `0x37D42C`
 
-**Dead code in v0.72.1:** The hierarchy walk (at `0x186AE`–`0x186BA`) references a table at `0x37D464`, but this address is occupied by BLE GATT attribute definitions in v0.72.1 — the walk always terminates immediately. A secondary table at `0x37D42C` (14 entries, stride 4) is similarly overlapped by BLE data. Both were likely designed for a richer content type tree in earlier firmware or future versions.
+If no entry in the main 38-row table matches, `0x18644` falls through to a second table at `0x37D42C` (14 entries, 4 bytes/entry). This table drives **timer/idle events** — preset type 0x0E. Script #42 (combat orchestrator) is invoked from here on every timer tick while a PAwR-combat-capable tag is active.
+
+Earlier documentation incorrectly claimed this table was dead code overlapped by BLE GATT data. It is live and critical — it is how timer-scheduled scripts (including combat) actually run.
+
+##### Secondary dispatcher `0x187F0` — 18-entry jump table (Queue B)
+
+Handlers for the 18 event IDs 0x00–0x11. Relevant entries for combat:
+
+| Event ID | Handler | Meaning |
+| --- | --- | --- |
+| 0x0C | `0x1898E` | Hit state cleared |
+| 0x0D | `0x18A12` | Individual hit (type 1) |
+| 0x0E | `0x18A3A` | Individual hit (type 2) |
+| 0x0F | `0x18AB6` | Hit threshold crossed (explosion) |
+
+These handlers update state variables (flags in `0x80CEBE`, slot arrays in `0x8089FC`, animation pointer in `0x80DA14`, counter at `0x80CF28+0x12`) and play audio synchronously via direct play-engine calls (`0x165E0`, `0x4B9C`, `0x47344`/`0x47124`). None of them push to Queue A, and none invoke the script interpreter. Hit-cleared (`0x1898E`) re-enqueues a 6-byte record onto Queue B via `0xFE90` for continued sound chaining.
+
+##### Hit counter / combat state machine
+
+Located at `0x1232C`. State bytes at `0x80CF28`:
+- `+0x10` — last content/tag ID (new distinct value arms the counter)
+- `+0x0E`, `+0x0F` — enable gates (must both be 1 for the counter to advance)
+- `+0x12` — hit counter byte
+- `+0x13` — flags (bit 2 = "in hit state")
+
+Logic at `0x12362`–`0x1239E`:
+- Not-yet-hit path: on 4th hit (`counter > 3`), set flag bit 2, reset counter, emit event **`0x0F` (explosion)** onto Queue B.
+- Below threshold: increment counter only, optionally emit `0x0D` or `0x0E` depending on message sub-type.
+- Already-hit path: if counter > 1 while in hit state, clear bit 2 and emit event **`0x0C`** (hit cleared).
+
+**Threshold = 4 hits** (strictly `> 3`).
+
+##### xorshift32 PRNG (`0x1E5D2`)
+
+Mutates the XOR key in-place at `0x80CF28+0` using shifts 13, 17, 5. Seeded from `content_lo ^ content_hi` on tag scan. Generates random bytes used by the downstream playback dispatcher (post-interpreter) to pick variants within a decoded playback record — different audio clips, different LED patterns for the same event. Because the seed is content-derived, different characters running the same script produce different variation sequences.
 
 #### play.bin Header Validation (0x34530)
 
@@ -914,45 +1017,40 @@ NPM events do **not** arrive via the tag content indexing path above. They enter
 3. Dispatcher at `0x52588` calls content hash lookup at `0x1660C` — compares 16-bit content hash from event against session table at `0x80927C`
 4. If no active session matches → event silently dropped
 5. If matched → routes to session's script via `0x16B64` → `0x4C1D0` (second hash verification against script slot at `0x809270+0xC`)
-6. Script handler at `0x4C630` → `0x4C5F4` checks PAwR capability flag (bit 1 at script+40) → state 5 handler at `0x1EE98`
+6. Script handler at `0x4C630` → `0x4C5F4` checks a runtime "capability bit" (bit 1 at script-runtime-struct+40) → state 5 handler at `0x1EE98`. (Previously described as a "PAwR capability flag." Since opcode 21 is dead code and no script can send PAwR, this bit is better understood as a per-script capability gate for NPM event delivery, independent of BrickNet.)
 
-**Scripts must opt in** to NPM events: the PAwR capability flag at byte offset 40 of the script structure must have bit 1 set, AND the running session's content signature must match the NPM event hash. Type 0x09 scripts (with header flag `0x40`) are the designated NPM recipients.
+**Scripts must opt in** to NPM events: the runtime capability bit at byte offset 40 of the script runtime structure must have bit 1 set, AND the running session's content signature must match the NPM event hash. Type 0x09 scripts (with header flag `0x40`) are the designated NPM recipients.
 
 The NPM event hash `0xC47A2B46` does not appear anywhere in play.bin — it is a firmware-level constant. The preset type 0x09 scripts respond to NPM events because the firmware maps incoming NPM protocol events to type 0x09 during script selection, not because the scripts contain the hash.
 
-#### PAwR-Capable Scripts
+#### "PAwR-Capable Scripts" — claim retracted
 
-Only 4 of 58 scripts use distributed execute (handler 21 / PAwR messaging):
+Earlier documentation identified 4 scripts (#1, #14, #42, #54) as "PAwR-capable" via opcode 21 (`bricknet_send`). This labeling was wrong — opcode 21 has no byte encoding in the translation table at `0x37BCF4`, so no script can invoke it. The disassembler confirms zero `bricknet_send` occurrences across all 58 scripts. All PAwR transmission in v0.72.1 is C-driven (see "Semantic Tree Integration" section above).
 
-| Script | Preset Type | Size (bytes) | Branches | Range Checks | If-Then-Else | Table Lookups |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0x0B | — | — | — | — | — |
-| 14 | 0x03 | — | — | — | — | — |
-| 42 | 0x0E | 1,564 | 6 | 9 | 17 | 71 |
-| 54 | 0x10 | — | — | — | — | — |
-
-Script 42 is the largest and most complex script in the file, and the only type-0x0E (Timer/idle) script with PAwR capability. See [HARDWARE.md](HARDWARE.md) for the inferred X-Wing tag case study.
+What these 4 scripts do have in common is structural: they are long-lived polling loops. Script #42 is the combat orchestrator (invoked every timer tick from the fallback table at `0x37D42C`), reading firmware hit-counter state bytes. The others are similarly long-running scripts for their respective preset types.
 
 #### Type-0x0E Script Comparison (Timer/Idle)
 
-| Script | Size | Branches | dist_exec | Range Checks | If-Then-Else | Table Lookups |
-| --- | --- | --- | --- | --- | --- | --- |
-| 38 | 161 | 0 | No | 2 | 0 | 14 |
-| 39 | 535 | 2 | No | 8 | 3 | 36 |
-| 40 | 554 | 2 | No | 5 | 3 | 37 |
-| 41 | 242 | 0 | No | 7 | 1 | 16 |
-| **42** | **1,564** | **6** | **Yes** | **9** | **17** | **71** |
-| 43 | 363 | 1 | No | 8 | 1 | 19 |
-| 44 | 227 | 0 | No | 4 | 1 | 16 |
-| 45 | 330 | 1 | No | 7 | 0 | 23 |
-| 46 | 98 | 0 | No | 1 | 0 | 10 |
-| 47 | 268 | 1 | No | 5 | 0 | 15 |
-| 48 | 770 | 3 | No | 6 | 1 | 43 |
-| 49 | 439 | 1 | No | 10 | 4 | 20 |
-| 50 | 634 | 2 | No | 8 | 1 | 33 |
-| 51 | 233 | 0 | No | 7 | 1 | 13 |
-| 52 | 103 | 0 | No | 3 | 1 | 9 |
-| 53 | 69 | 0 | No | 3 | 1 | 5 |
+| Script | Size | Branches | Range Checks | If-Then-Else | Table Lookups |
+| --- | --- | --- | --- | --- | --- |
+| 38 | 161 | 0 | 2 | 0 | 14 |
+| 39 | 535 | 2 | 8 | 3 | 36 |
+| 40 | 554 | 2 | 5 | 3 | 37 |
+| 41 | 242 | 0 | 7 | 1 | 16 |
+| **42** | **1,564** | **6** | **9** | **17** | **71** |
+| 43 | 363 | 1 | 8 | 1 | 19 |
+| 44 | 227 | 0 | 4 | 1 | 16 |
+| 45 | 330 | 1 | 7 | 0 | 23 |
+| 46 | 98 | 0 | 1 | 0 | 10 |
+| 47 | 268 | 1 | 5 | 0 | 15 |
+| 48 | 770 | 3 | 6 | 1 | 43 |
+| 49 | 439 | 1 | 10 | 4 | 20 |
+| 50 | 634 | 2 | 8 | 1 | 33 |
+| 51 | 233 | 0 | 7 | 1 | 13 |
+| 52 | 103 | 0 | 3 | 1 | 9 |
+| 53 | 69 | 0 | 3 | 1 | 5 |
+
+(`dist_exec` column removed — opcode 21 is dead code in v0.72.1, no script uses it.)
 
 #### Content Growth Across Firmware Versions
 

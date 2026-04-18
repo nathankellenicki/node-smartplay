@@ -1067,23 +1067,36 @@ Semantic tree: opcode 13 (if-then)
   → then-branch: opcodes 3–12 write audio command → swoosh sound
 ```
 
-**Example: color-triggered action (laser fire on red)**
+**Example: color-triggered local action (laser fire on red — poll-driven)**
 ```
-Semantic tree: opcode 14 (if-then-else)
-  → opcode 18 (equality check): is color value == RED?
-  → then-branch: laser sound + LED flash + opcode 21 (PAwR broadcast)
-  → else-branch: skip (idle animation)
+Script #42 runs every timer tick while an X-Wing tag is active.
+Each tick, the bytecode polls sensor state:
+  if_then_else (color value in red range):
+    then-branch: emit laser-sound + LED-flash playback record
+    else-branch: emit idle-swoosh record
+The record is passed to the downstream dispatcher which plays it.
+PAwR transmission is handled separately by C firmware — the script
+does NOT invoke op21 (it's dead code in v0.72.1).
 ```
 
 **Example: distributed play (laser hits remote brick)**
 ```
-Semantic tree: opcode 21 (distributed execute)
-  → if value == 2 (multi-brick content): serialize 16 bytes of tree state
-  → send via BrickNet transport → PAwR broadcast to nearby bricks
-  → remote brick deserializes → PPL counter increments → state transition
+Firing brick (C code, not bytecode):
+  BrickNet coordinator builds a 25-byte PAwR packet (see FIRMWARE.md
+  "BrickNet messaging" section) → transmits on its PAwR subevent.
+Receiving brick (C code):
+  0x1232C reads the incoming message byte, increments hit counter
+  at [0x80CF28+0x12]. Below threshold → emit event 0x0D or 0x0E onto
+  Queue B; the secondary dispatcher at 0x187F0 plays a hit sound
+  synchronously via direct play-engine calls.
+  At 4th hit → emit event 0x0F (explosion) onto Queue B; handler
+  plays explosion via 0x3314 → 0x165E0.
+Script #42 (already running on the receiving brick) sees the state
+flag change on its next timer tick and transitions its own output
+to the appropriate post-hit / post-explosion branch.
 ```
 
-Opcodes 16–18 (range check clamped, range check signed, equality check) are the comparison primitives. They read typed values from the script stream — inline literals, 2-byte values, 3-byte signed, or 5-byte floats — and compare against sensor readings.
+Opcodes 16–18 (range check clamped, range check signed, equality check) are the comparison primitives used inside conditionals.
 
 ### PPL — Play Preset Language
 
@@ -1131,9 +1144,11 @@ Tag placed → PPL: state=playing, total_needed=N
 
 ### Semantic Tree Executor
 
-Processes `play.bin` scripts as a **flat linearized tree**. 25 opcodes (1-based), recursive — opcodes 13–15, 19–21 call the executor again with the same state.
+Processes `play.bin` scripts as a **typed record unpacker** — the bytecode is a schema that decodes a separate data stream into a structured playback record. 25 opcodes (1-based), with block opcodes (13–15, 19–20) recursively invoking the executor on a nested body. Opcode 21 (`bricknet_send`) is compiled but unreachable — no byte in the translation table maps to it in v0.72.1.
 
-The bytecode uses a **table-driven encoding** — a 256-byte translation table maps each byte value to an opcode handler. Multiple byte values encode the same opcode, with the specific byte carrying implicit operand data. For example, opcode 3 (write byte) has 40 different encodings. This makes the scripts very compact.
+The bytecode uses a **table-driven encoding** — a 256-byte translation table at `0x37BCF4` maps each byte value to an opcode handler. Multiple byte values encode the same opcode, with the specific byte carrying implicit operand data. For example, opcode 3 (write byte) has 40 different encodings. This makes the scripts very compact. Bytes whose translation-table value is 0 or >25 are **block terminators** — the interpreter returns 0 to its caller when it encounters one.
+
+The executor has exactly ONE external caller (`0x6BFFE`). All other references to `0x4B830` are internal recursive invocations by block opcodes. See [SCRIPTS.md](SCRIPTS.md) for the complete interpreter model.
 
 | Opcode | Category | Description |
 | --- | --- | --- |
@@ -1289,16 +1304,20 @@ The earliest firmware (v0.46.0) had a 377 KB decompressed ROFS in a 645 KB firmw
 
 Of the 58 script blocks in `play.bin` (v0.72.1):
 
-**PAwR-capable scripts** (4 scripts use distributed execute, opcode 21):
+**"PAwR-capable" scripts — claim retracted.**
 
-| Script | Preset Type | Size | Branches | Range Checks | If-Then-Else | Table Lookups |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0x0B | — | — | — | — | — |
-| 14 | 0x03 | — | — | — | — | — |
-| **42** | **0x0E** | **1,564** | **6** | **9** | **17** | **71** |
-| 54 | 0x10 | — | — | — | — | — |
+Earlier documentation listed 4 scripts (#1, #14, #42, #54) as "PAwR-capable" because they were thought to use opcode 21 (`bricknet_send`). This was incorrect: **no byte in the translation table at `0x37BCF4` maps to opcode 21, so no script uses it**. The disassembler confirms zero `bricknet_send` occurrences across all 58 scripts.
 
-Script 42 is the only type-0x0E (Timer/idle) script with PAwR. It is by far the largest and most complex script in the file.
+What distinguishes scripts #1, #14, #42, #54 from the rest is almost certainly something else — likely structural (high `if_then_else` / `cond_exec` density) reflecting their role as long-lived polling loops that read firmware state (combat flags, NPM proximity bits, timers). Script #42 in particular is the combat orchestrator, running continuously via the timer fallback table at `0x37D42C` whenever a PAwR-combat tag is active.
+
+| Script | Preset Type | Size | Role |
+| --- | --- | --- | --- |
+| 1 | 0x0B | — | System/default |
+| 14 | 0x03 | 702 | Identity script, carries the highest `cond_exec` count in its type; may handle a long-lived content-group-A loop |
+| **42** | **0x0E** | **1,564** | **Combat orchestrator** — poll-driven; reads hit counter flags, produces per-tick playback record |
+| 54 | 0x10 | 551 | Largest button script; likely handles a multi-step shake interaction |
+
+Script 42 is the combat orchestrator — a type-0x0E (Timer/idle) script that runs continuously while a PAwR-combat-capable tag is active. It is by far the largest and most complex script in the file. Unlike event-triggered scripts, it is not invoked *in response to* a hit — it runs every timer tick and polls firmware state bits that the hit handlers update. (Earlier notes described script 42 as sending PAwR messages via opcode 21 `bricknet_send`; this was wrong. No byte in the interpreter translation table maps to opcode 21, so it is unreachable dead code in v0.72.1. All BrickNet send/receive is C-driven firmware, not bytecode.)
 
 **NPM/proximity scripts** (11 scripts, type 0x09):
 
@@ -1312,29 +1331,28 @@ The remaining 43 scripts are single-brick experiences triggered by tags, buttons
 
 #### Shared Script: Script 42
 
-Both the X-Wing and Imperial Turret exhibit PAwR combat behaviour (fire on red, hit counting, progressive damage, explosion). Script 42 is the **only** type-0x0E (Timer/idle) script with PAwR capability, so both tags must select it. They share identical gameplay logic but produce different experiences through different audio and animation bank selections.
+Both the X-Wing and Imperial Turret exhibit PAwR combat behaviour (fire on red, hit counting, progressive damage, explosion). Script #42 is the designated combat orchestrator — the type-0x0E (Timer/idle) script that runs continuously while a PAwR-combat tag is active and polls the firmware hit-counter state. Both tags select it via their resource-reference records for type 0x0E. They share identical gameplay logic but produce different experiences through different audio and animation bank selections.
 
-**Script 42 characteristics** (confirmed from binary analysis):
+**Script 42 characteristics** (confirmed from clean disassembly via `research/tools/disasm-bytecode.js`):
 
 - **Size:** 1,564 bytes — largest script in play.bin
-- **Branches:** 6 (sub-header child_count)
-- **Range checks:** 9 instances, using 3 distinct sensor byte values:
-  - Byte `0x30`: 5 occurrences with varying thresholds (likely accelerometer axes — **inferred**)
-  - Byte `0x21`: 2 occurrences (likely a second sensor input — **inferred**)
-  - Byte `0x27`: 1 occurrence (likely a third sensor input — **inferred**)
-- **Distributed execute:** 1 instance at script byte offset 1382, skip amount 7 — positioned late in the script, consistent with combat interaction being a later behavioral state
-- **No equality checks** (opcode 18) — color sensor detection appears to use narrow range checks instead, which is sensible for analog sensor readings
+- **Child count:** 10 (sub-header)
+- **Opcode mix:** 48 `cond_exec`, 17 `if_then_else`, 30 `type_dispatch`, numerous `counted_loop` blocks — a highly-branched polling loop
+- **Zero `bricknet_send` (op21) instances** — matches the fact that the opcode is dead code overall
+- **Role:** decodes a "combat playback record" from the tag's input data stream using firmware state bytes at `0x80CF28+0x12`/`+0x13` and `0x80CEBE` as branch conditions. Each timer-tick invocation outputs one playback record (audio/animation refs) that the downstream dispatcher plays.
 
-**Inferred behavioral branch mapping:**
+**Inferred behavioral branch mapping (illustrative — not directly verifiable from static analysis):**
 
 | Branch | Likely Behaviour | X-Wing Experience | Imperial Turret Experience |
 | --- | --- | --- | --- |
-| 1–2 | Idle + motion detection | Flying swoosh sounds | Turret rotation sounds |
-| 3 | Color sensor trigger | Laser firing sound | Turret firing sound |
-| 4–5 | PAwR combat | Hit sounds on remote brick | Hit sounds on remote brick |
-| 6 | Alarm + destruction | X-Wing explosion | Turret explosion |
+| Idle | Motion-driven ambient | Flying swoosh sounds | Turret rotation sounds |
+| Color trigger | Fire initiation | Laser firing sound | Turret firing sound |
+| Post-hit (flag bit 2 set) | Damage state playback | Damage sounds | Damage sounds |
+| Post-explosion | Destruction state | X-Wing explosion cleanup | Turret explosion cleanup |
 
-The motion detection branches (1–2) use the same accelerometer range checks in both cases. The **physical LEGO build** determines what motion triggers them — the X-Wing is held and moved freely (producing swoosh), while the turret sits on a rotating base (producing rotation). The script just sees "acceleration exceeded threshold" and plays from whichever audio bank the tag selected.
+The actual branch structure in the bytecode is determined by `if_then_else`/`cond_exec` opcodes reading the state flags. The instantaneous hit and explosion audio is NOT produced by this script — it's dispatched synchronously from the hit handlers (`0x18A12`, `0x18A3A`, `0x18AB6`) via direct play-engine calls. Script #42 handles the *ongoing* ambient, pre-hit, post-hit and post-explosion sound/LED continuation.
+
+The physical LEGO build determines what motion triggers the idle branches — the X-Wing is held and moved (swoosh), the turret rotates on a base (rotation). The script just sees "accelerometer threshold exceeded" and plays from whichever audio bank the active tag selected.
 
 #### Tag Content Comparison
 
@@ -1354,11 +1372,11 @@ Both tags' resource reference records select the same script (Script 42) but car
 
 The same reactive script handles both a flying vehicle and a stationary rotating turret. The script's sensor condition checks are generic — "did the accelerometer exceed this threshold?" — and it is the physical LEGO build, combined with the tag's audio/animation bank selection, that creates the distinct play experience. The firmware and script have no concept of "X-Wing" or "turret" — they only know sensor thresholds, audio bank IDs, and animation bank IDs.
 
-#### Positioning Not Used by Combat Script
+#### Positioning Not Used by Combat
 
-Script 42 does **not** use NPM positioning — PAwR combat hits register from any BLE range, including from a different room. The distributed execute opcode sends unconditionally with no distance or orientation check.
+Combat hits register from any BLE range, including across rooms — there is no distance or orientation gate on PAwR receive in the firmware. Incoming fire is handled by the hit counter at `0x1232C` regardless of physical proximity.
 
-However, **other scripts do use positioning**. The 11 type-0x09 scripts (#21–#31) are dedicated NPM/proximity reaction scripts — short audio/LED behaviours triggered by brick-to-brick proximity. These scripts and the combat script operate independently: proximity reactions fire when bricks detect each other nearby, while PAwR combat fires when a tag's color sensor sees red, regardless of distance.
+However, **other scripts do use positioning**. The 11 type-0x09 scripts (#21–#31) are dedicated NPM/proximity reaction scripts — short audio/LED behaviours triggered by brick-to-brick proximity. These scripts and the combat orchestrator operate independently: proximity reactions fire when bricks detect each other nearby, while combat fires when a tag's color sensor sees red (firing brick) or when PAwR messages arrive over BLE (receiving brick).
 
 #### What's NOT known
 - The exact byte values of either tag's RFID memory (security format, CRC, raw encoding)
@@ -1402,9 +1420,9 @@ These events are processed by the play state machine in **state 5** ("sensor act
 
 **11 of 58 scripts use positioning.** Preset type `0x09` (scripts #21–#31) are dedicated NPM/proximity reaction scripts. They are short, uniform (~101 bytes each), and produce brief audio/LED reactions when another brick is detected nearby. Script selection is deterministic based on the content_index from the event data.
 
-NPM events are **strictly content-signature routed**. The event builder at `0x50A94` tags each NPM event with the content hash `0xC47A2B46`. The dispatcher at `0x52588` looks up this hash in the session table at `0x80927C` — if no active session matches, the event is silently dropped. Scripts must have the PAwR capability flag (bit 1 at script+40) set to receive NPM events.
+NPM events are **strictly content-signature routed**. The event builder at `0x50A94` tags each NPM event with the content hash `0xC47A2B46`. The dispatcher at `0x52588` looks up this hash in the session table at `0x80927C` — if no active session matches, the event is silently dropped. Scripts must have the runtime capability bit (bit 1 at script-runtime-struct+40) set to receive NPM events. This was previously called a "PAwR capability flag"; since opcode 21 is dead code, the bit is better read as an NPM-delivery gate, not a PAwR marker.
 
-**Not all play scripts use positioning.** The X-Wing / Imperial Turret combat script (script 42, type 0x0E) does not gate PAwR combat on distance or orientation — hits register from any BLE range. Positioning reactions (type 0x09) and PAwR combat (type 0x0E) operate on independent channels: proximity events trigger type 0x09 scripts, while combat events flow through the distributed execute opcode in type 0x0E scripts.
+**Not all play scripts use positioning.** The X-Wing / Imperial Turret combat orchestrator (script 42, type 0x0E) does not gate PAwR combat on distance or orientation — hits register from any BLE range. Positioning reactions (type 0x09) and PAwR combat (type 0x0E) operate on independent channels: proximity events trigger type 0x09 scripts, while combat events flow through firmware C handlers that update state variables which script 42 polls each timer tick.
 
 | Capability | Script Type | Count | Trigger |
 | --- | --- | --- | --- |
@@ -1430,7 +1448,7 @@ PAwR is **not** always active when undocked. It is triggered by **Smart Tags who
 4. If multi-brick: a PAwR session is initiated with a group UUID identifying the play experience (`0x7020162E` for type 2, `0xBF8C4668` for type 4)
 5. The first brick becomes the **coordinator**, starting periodic advertising
 6. Other bricks with compatible play content join as **responders**
-7. The semantic tree executor's **opcode 21** enables inter-brick messaging over the BrickNet transport
+7. Inter-brick messaging is handled by the BrickNet C code (not by bytecode). The script system's opcode 21 (`bricknet_send`) is compiled but unreachable — no byte in the translation table maps to it in v0.72.1.
 
 Tags with single-brick play content (any type other than 2 or 4) do not activate PAwR. The brick plays locally without any BLE communication.
 
@@ -1453,7 +1471,7 @@ Inter-brick play messages are **25-byte packets** sent over PAwR periodic advert
 └──────────────────────────────────┘
 ```
 
-The semantic tree executor's **opcode 21** (distributed execute) decides what gets sent. It walks the play script and for each iteration either executes locally or serializes the current tree state via the BrickNet transport at `0x6CEF8` — a 13-opcode sub-interpreter that serializes the same opcode table used by the semantic tree.
+What gets sent is chosen by **C firmware** — specifically the BrickNet coordinator code at `0x6D0E4`, which prepares a 25-byte packet with 16 bytes of serialized state at offset 9, and sends it via `0x6E374`. (Earlier docs described this as driven by "semantic tree opcode 21 — distributed execute." That was wrong. The op21 handler and the 13-opcode sub-interpreter at `0x6CEF8` both exist in compiled code, but nothing reaches them because no byte in the translation table selects op21.)
 
 Payloads are **XOR-encrypted** using a session key at struct+0x20, established during session setup. This is lightweight obfuscation, not AES — the session key is distributed by the coordinator during PAwR session initiation.
 

@@ -299,19 +299,21 @@ This traces the full technical path from power-on through gameplay for a three-b
 
 ### Phase 4 — Gameplay (Weapon Fire)
 
-14. **Colour sensor trigger on Brick 1.** You show the colour red to the brick's colour sensor. The DA000001-01 ASIC detects the colour and generates an event. The play engine maps "red detected" to the weapon-fire action for X-Wing content — this is how all Smart Bricks trigger actions (there is no physical button). The PPL preset system selects the appropriate weapon-fire script based on the tag's resource reference records (content_ref matching the PPL preset table).
-15. **Local sound playback.** The semantic tree executor runs the weapon script locally. An audio command is dispatched to the DA000001-01 ASIC's analog synthesizer, which plays the weapon sound effect through the speaker. LED animations fire simultaneously.
-16. **Opcode 21 — distributed execute.** The weapon script contains semantic tree opcode 21 (distributed execute). This is the instruction that means "send this state to other bricks." The BrickNet transport at `0x6CEF8` — a 13-opcode sub-interpreter — serializes the current tree position, condition values, and output buffer into a 25-byte BrickNet message.
+14. **Colour sensor trigger on Brick 1.** You show the colour red to the brick's colour sensor. The DA000001-01 ASIC detects the colour and generates an event. This is how Smart Bricks trigger actions (there is no physical button).
+15. **Combat orchestrator script running.** Script #42 (type 0x0E, timer/idle) is already running on Brick 1 every timer tick — it was selected on tag placement because the X-Wing's resource-reference records point to it for type 0x0E. On this tick, the bytecode reads the color sensor state and takes the "fire" branch, emitting a playback record that plays the local laser sound and LED flash.
+16. **BrickNet send from C, not bytecode.** The fire action triggers a C-level BrickNet transmission (the `bricknet_send` opcode 21 is compiled dead code — no byte in the translation table maps to it in v0.72.1). The BrickNet coordinator code at `0x6D0E4` serializes 16 bytes of state into a 25-byte packet and transmits it. (Earlier documentation described step 16 as "opcode 21 — distributed execute from the weapon script"; this was wrong — the script does NOT emit BrickNet; the trigger-to-send path is entirely in C.)
 17. **XOR encrypt.** The encrypt function at `0x6d1fc` XORs the first 16 bytes of the message with the session key (Key A for bytes 2–8, Key B for bytes 9–15, counter for bytes 0–1). Bytes 16–24 are left as cleartext.
-18. **PAwR broadcast.** The encrypted message is sent as a PAwR subevent indication, wrapped in FEF3 Service Data framing (`0x16 0xF3 0xFE` + 25-byte payload). This goes out on a secondary advertising channel. **All synced responders receive it simultaneously** — PAwR subevent indications are broadcast, not addressed to individual responders.
+18. **PAwR broadcast.** The encrypted message is sent as a PAwR subevent indication, wrapped in FEF3 Service Data framing. All synced responders receive it simultaneously.
 
 ### Phase 5 — TIE Fighters React
 
-19. **Both Brick 2 and Brick 3 receive the message.** The PAwR subevent indication arrives at each responder in their designated listening slot. Both bricks get the exact same 25-byte encrypted message.
-20. **XOR decrypt.** Each brick's decrypt function at `0x6d280` XORs bytes 0–15 with the session key, recovering the plaintext tree state. The opcode at byte 8 identifies this as a game event (e.g. `0x10` or `0x30`).
-21. **Play state machine processes.** The deserialized tree state is fed into the play state machine at `0x80D804`. The PPL "other" counter at `0x80C6C0+0xA` is incremented (tracking how many inter-brick events have been received).
-22. **TIE Fighter response script fires.** Each brick's semantic tree executor looks up its own TIE Fighter response script for the received event. The script determines the local reaction — explosion sounds, damage LED animations, hit acknowledgments. The response depends on each brick's own tag content, not on any per-responder addressing in the message.
-23. **Both TIE Fighters react together.** Because the broadcast is simultaneous and both bricks run the same TIE Fighter content, both react at the same time with the same explosion/hit effects.
+19. **Both Brick 2 and Brick 3 receive the message.** The PAwR subevent indication arrives at each responder in their designated listening slot.
+20. **XOR decrypt.** Each brick's decrypt function at `0x6d280` XORs bytes 0–15 with the session key, recovering the plaintext. The opcode at byte 8 identifies this as a fire event.
+21. **Hit counter increments (C code).** The receive path hands the decoded message to `0x1232C`, which updates the hit counter at `[0x80CF28+0x12]`. This is NOT script-driven — it's all C firmware. Depending on count vs threshold (4), the counter emits event `0x0D`/`0x0E` (individual hit) or `0x0F` (explosion threshold crossed) onto Queue B (the 6-byte-record queue at `0x80CE9C`).
+22. **Hit handler plays sound synchronously.** The secondary dispatcher at `0x187F0` runs the handler for the emitted event (`0x18A12`/`0x18A3A` for hit, `0x18AB6` for explosion). The handler updates state bits in `0x80CEBE` / `0x80DA14` / `0x8089FC` and plays the hit or explosion audio *synchronously* via direct play-engine calls (`0x4B9C`, `0x47344`/`0x47124`, `0x165E0`). The audio bank used is the one pointed to by the TIE Fighter's combat resource-reference record — that's why two different ships produce different hit sounds.
+23. **Script #42 observes the state change on its next tick.** Script #42 is already running on the receiving brick (same reason as Brick 1 — it's the type 0x0E script for PAwR-combat tags). On its next timer invocation, it reads the updated flag bits and produces a post-hit or post-explosion playback record, which the downstream dispatcher plays (continuing damage ambience, switching to destroyed-state LED pattern, etc.).
+
+**Critical correction vs. earlier docs:** There is no "TIE Fighter response script that fires on hit." Hit reactions are C-dispatched synchronously. The only script involved in combat is the already-running orchestrator (#42), which provides the continuous ambience and state-driven playback around the instantaneous C-dispatched hit sounds.
 
 ### What's on the Wire
 
@@ -323,7 +325,7 @@ During steady-state play, the PAwR subevent channel looks like this:
 
 ~85% of messages are idle heartbeats (all-zero encrypted payload = the session key itself on the wire). Game events are sparse — a weapon fire is a single non-idle message punctuating the heartbeat stream.
 
-The coordinator doesn't say "hit TIE Fighter." It says "I fired weapons — here's my semantic tree state." Each responder independently runs its own play script to decide how to react based on its own tag content. A TIE Fighter reacts with explosions. A different tag might react differently to the same event.
+The coordinator doesn't say "hit TIE Fighter." It says "I fired weapons — here's my semantic tree state." Each responder's firmware interprets the event identically (counter++, state update, synchronous hit audio). The **per-ship variation** comes from each responder's local resource-reference records providing different audio/animation banks — the firmware logic is identical across ships.
 
 ### Responder-to-Coordinator (Subevent RSP)
 
